@@ -7,6 +7,8 @@ import PopupOverlay from './components/PopupOverlay';
 import Legend from './components/Legend';
 import MapNavigationControl from './components/MapNavigationControl';
 import DirectionsSidebar from './components/DirectionsSidebar';
+import CrashDataControls from './components/CrashDataControls';
+import { useCrashData } from './hooks/useCrashData';
 
 export default function Home() {
 	const mapRef = useRef<any>(null);
@@ -20,40 +22,49 @@ export default function Home() {
 	});
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
+	
+	// Shared crash data state
+	const crashDataHook = useCrashData({ autoLoad: true, limit: 10000 });
 
 	return (
 		<div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row' }}>
-			<div style={{ display: 'flex', flexDirection: 'column' }}>
-				<DirectionsSidebar mapRef={mapRef} profile="mapbox/driving" />
-			</div>
-
 			<div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+				{/* Render sidebar as an overlay inside the map container so collapsing doesn't shift layout */}
+				<div style={{ position: 'absolute', left: 0, top: 0, height: '100%', zIndex: 40, pointerEvents: 'auto' }}>
+					<DirectionsSidebar mapRef={mapRef} profile="mapbox/driving" />
+				</div>
 				<ControlsPanel
-				panelOpen={panelOpen}
-				onTogglePanel={(next) => { setPanelOpen(next); try { window.localStorage.setItem('map_panel_open', next ? '1' : '0'); } catch (e) {} }}
-				mapStyleChoice={mapStyleChoice}
-				onChangeStyle={(v) => setMapStyleChoice(v)}
-				heatVisible={heatVisible}
-				onToggleHeat={(v) => setHeatVisible(v)}
-				pointsVisible={pointsVisible}
-				onTogglePoints={(v) => setPointsVisible(v)}
-				heatRadius={heatRadius}
-				onChangeRadius={(v) => setHeatRadius(v)}
-				heatIntensity={heatIntensity}
-				onChangeIntensity={(v) => setHeatIntensity(v)}
-			/>
+					panelOpen={panelOpen}
+					onTogglePanel={(next) => { setPanelOpen(next); try { window.localStorage.setItem('map_panel_open', next ? '1' : '0'); } catch (e) {} }}
+					mapStyleChoice={mapStyleChoice}
+					onChangeStyle={(v) => setMapStyleChoice(v)}
+					heatVisible={heatVisible}
+					onToggleHeat={(v) => setHeatVisible(v)}
+					pointsVisible={pointsVisible}
+					onTogglePoints={(v) => setPointsVisible(v)}
+					heatRadius={heatRadius}
+					onChangeRadius={(v) => setHeatRadius(v)}
+					heatIntensity={heatIntensity}
+					onChangeIntensity={(v) => setHeatIntensity(v)}
+				/>
 
 				<MapView
-				mapStyleChoice={mapStyleChoice}
-				heatRadius={heatRadius}
-				heatIntensity={heatIntensity}
-				heatVisible={heatVisible}
-				pointsVisible={pointsVisible}
-				onMapReady={(m) => { mapRef.current = m; }}
-				onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
-			/>
+					mapStyleChoice={mapStyleChoice}
+					heatRadius={heatRadius}
+					heatIntensity={heatIntensity}
+					heatVisible={heatVisible}
+					pointsVisible={pointsVisible}
+					useRealCrashData={true}
+					crashData={crashDataHook.data}
+					onMapReady={(m) => { mapRef.current = m; }}
+					onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
+				/>
+				
 				{/* Native Mapbox navigation control (zoom + compass) */}
 				<MapNavigationControl mapRef={mapRef} position="top-right" />
+				
+				{/* Crash data loading controls */}
+				<CrashDataControls crashDataHook={crashDataHook} />
 
 				<Legend />
 				<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />

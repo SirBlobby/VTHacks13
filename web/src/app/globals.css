@@ -194,3 +194,105 @@ body {
 
 /* Directions sidebar (left-side, full-height, collapsible) */
 /* Directions sidebar styling is now handled via Tailwind classes in the component. Legacy CSS removed. */
+
+/* MapboxGeocoder styling override scoped to the directions sidebar */
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder {
+  background: transparent;
+  padding: 0;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder input[type="text"],
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
+  background: #0f1112; /* match sidebar */
+  color: #e6eef8; /* light text */
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder input[type="text"]::placeholder,
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
+  color: rgba(230,238,248,0.5);
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder input[type="text"]:focus,
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 126, 95, 0.12);
+  border-color: rgba(255,126,95,0.6);
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder--suggestions,
+.directions-sidebar-geocoder .suggestions {
+  background: #0b0b0c; /* dropdown bg */
+  color: #e6eef8;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.directions-sidebar-geocoder .custom-suggestions { z-index: 60; }
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder--suggestions .suggestion,
+.directions-sidebar-geocoder .suggestions .suggestion {
+  padding: 0.5rem 0.75rem;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder--suggestions .suggestion:hover,
+.directions-sidebar-geocoder .suggestions .suggestion:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* custom inline geocoder input and dropdown styling */
+.directions-sidebar-geocoder input[type="text"] {
+  background: #0f1112;
+  color: #e6eef8;
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.directions-sidebar-geocoder .custom-suggestions button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+.directions-sidebar-geocoder .custom-suggestions button:hover { background: rgba(255,255,255,0.03); }
+
+/* hide the magnifying/search icon inside the embedded geocoder input */
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon {
+  display: none !important;
+}
+
+/* make the geocoder control and input expand to the container width */
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder {
+  width: 100%;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
+  width: 100% !important;
+}
+
+/* Strong overrides to ensure the geocoder input fits into the sidebar layout */
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder input[type="text"],
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0.5rem 0.85rem !important;
+  font-size: 0.95rem !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon,
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--button {
+  /* hide icon and buttons that overlap the input; keep clear if needed */
+  display: none !important;
+}
+.directions-sidebar-geocoder .mapboxgl-ctrl-geocoder--suggestions {
+  width: calc(100% - 0px) !important;
+  box-sizing: border-box !important;
+}

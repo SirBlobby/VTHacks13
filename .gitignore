@@ -45,3 +45,4 @@ package-lock.json
 
 .venv/
 roadcast/data.csv
+web/public/Crashes_in_DC.csv

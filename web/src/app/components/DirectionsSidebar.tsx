@@ -2,28 +2,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import GeocodeInput from './GeocodeInput';
 
 interface Props {
   mapRef: React.MutableRefObject<mapboxgl.Map | null>;
   profile?: "mapbox/driving" | "mapbox/walking" | "mapbox/cycling";
 }
 
-function parseLngLat(value: string): [number, number] | null {
-  // Accept formats like: "lng,lat" or "lat,lng" if clearly parseable
-  if (!value) return null;
-  const parts = value.split(",").map((s) => s.trim());
-  if (parts.length !== 2) return null;
-  const a = Number(parts[0]);
-  const b = Number(parts[1]);
-  if (Number.isFinite(a) && Number.isFinite(b)) {
-    // Heuristic: if abs(a) > 90 then assume it's lng,lat
-    if (Math.abs(a) > 90) return [a, b];
-    if (Math.abs(b) > 90) return [b, a];
-    // otherwise assume input is lng,lat
-    return [a, b];
-  }
-  return null;
-}
+// Routing now uses geocoder-only selection inside the sidebar (no manual coordinate parsing)
 
 export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }: Props) {
   // Sidebar supports collapse via a hamburger button in the header
@@ -34,33 +20,86 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
   const [originCoord, setOriginCoord] = useState<[number, number] | null>(null);
   const [destCoord, setDestCoord] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pickMode, setPickMode] = useState<"origin" | "dest" | null>(null);
+  // custom geocoder inputs + suggestions (we implement our own UI instead of the library)
+  const originQueryRef = useRef<string>("");
+  const destQueryRef = useRef<string>("");
+  const [originQuery, setOriginQuery] = useState("");
+  const [destQuery, setDestQuery] = useState("");
+  const [originSuggestions, setOriginSuggestions] = useState<any[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
+  const originTimer = useRef<number | null>(null);
+  const destTimer = useRef<number | null>(null);
+  const originInputRef = useRef<HTMLDivElement | null>(null);
+  const destInputRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     return () => { mountedRef.current = false; };
   }, []);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    function onMapClick(e: mapboxgl.MapMouseEvent) {
-      if (!pickMode) return;
-      const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-      if (pickMode === "origin") {
-        setOriginCoord(lngLat);
-        setOriginText(`${lngLat[0].toFixed(5)}, ${lngLat[1].toFixed(5)}`);
-      } else {
-        setDestCoord(lngLat);
-        setDestText(`${lngLat[0].toFixed(5)}, ${lngLat[1].toFixed(5)}`);
-      }
-      setPickMode(null);
+  // We'll implement our own geocoder fetcher and suggestion UI.
+  const fetchSuggestions = async (q: string) => {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || mapboxgl.accessToken || (typeof window !== 'undefined' ? (window as any).NEXT_PUBLIC_MAPBOX_TOKEN : undefined);
+    if (!token) {
+      console.warn('[DirectionsSidebar] Mapbox token missing; suggestions disabled');
+      return [];
     }
+    if (!q || q.trim().length === 0) return [];
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?autocomplete=true&limit=6&types=place,locality,address,region,poi&access_token=${token}`;
+    try {
+      console.debug('[DirectionsSidebar] fetchSuggestions url=', url);
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const feats = data.features || [];
+      console.debug('[DirectionsSidebar] fetchSuggestions results=', feats.length);
+      return feats;
+    } catch (e) {
+      console.warn('[DirectionsSidebar] fetchSuggestions error', e);
+      return [];
+    }
+  };
 
-    map.on("click", onMapClick as any);
-    return () => { if (map) map.off("click", onMapClick as any); };
-  }, [mapRef, pickMode]);
+  // debounce origin query
+  useEffect(() => {
+    if (originTimer.current) window.clearTimeout(originTimer.current);
+    if (!originQuery) {
+      setOriginSuggestions([]);
+      return;
+    }
+    originTimer.current = window.setTimeout(async () => {
+      const features = await fetchSuggestions(originQuery);
+      if (mountedRef.current) setOriginSuggestions(features);
+    }, 250) as unknown as number;
+    return () => { if (originTimer.current) window.clearTimeout(originTimer.current); };
+  }, [originQuery]);
+
+  // debounce dest query
+  useEffect(() => {
+    if (destTimer.current) window.clearTimeout(destTimer.current);
+    if (!destQuery) {
+      setDestSuggestions([]);
+      return;
+    }
+    destTimer.current = window.setTimeout(async () => {
+      const features = await fetchSuggestions(destQuery);
+      if (mountedRef.current) setDestSuggestions(features);
+    }, 250) as unknown as number;
+    return () => { if (destTimer.current) window.clearTimeout(destTimer.current); };
+  }, [destQuery]);
+
+  // when collapsed toggles, mount or unmount geocoder controls to keep DOM stable
+  useEffect(() => {
+    // if expanded, ensure the geocoder instances are attached to their containers
+      if (!collapsed) {
+        // nothing to mount for the custom inputs — they are regular DOM inputs rendered below
+      } else {
+        // nothing to clear: we are managing suggestions via state
+      }
+  }, [collapsed]);
+
+  // note: we no longer listen for map-level geocoder results here because
+  // the sidebar now embeds its own two geocoder controls and captures results directly.
 
   // helper: remove existing route layers/sources
   function removeRouteFromMap(map: mapboxgl.Map) {
@@ -95,13 +134,10 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
   async function handleGetRoute() {
     const map = mapRef.current;
     if (!map) return;
-    let o = originCoord;
-    let d = destCoord;
-    // if coords not set but text parsable
-    if (!o) o = parseLngLat(originText);
-    if (!d) d = parseLngLat(destText);
+    const o = originCoord;
+    const d = destCoord;
     if (!o || !d) {
-      alert("Please provide origin and destination coordinates or pick them on the map (click 'Pick on map').\nFormat: lng,lat");
+      alert('Please select both origin and destination using the location search boxes.');
       return;
     }
 
@@ -183,6 +219,9 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
     setDestCoord(null);
     setOriginText("");
     setDestText("");
+  // clear suggestions and inputs
+  setOriginSuggestions([]);
+  setDestSuggestions([]);
   }
 
   // re-add layers after style change
@@ -276,33 +315,42 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
       </button>
 
       {/* Content — render only when expanded to avoid any collapsed 'strip' */}
-      {!collapsed && (
-        <div className="flex flex-col flex-1 p-4 overflow-auto">
+      <div className={`flex flex-col flex-1 p-4 overflow-auto ${collapsed ? 'hidden' : ''}`}>
           <div className="flex items-center justify-between mb-3 sticky top-2 z-10">
             <strong className="text-sm">Directions</strong>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <label className="text-sm w-20 flex-shrink-0">Origin</label>
-              <input
-                className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
-                value={originText}
-                onChange={(e) => setOriginText(e.target.value)}
-                placeholder="lng,lat"
-              />
-              <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('origin')}>Pick</button>
+          <div className="flex flex-col gap-3 directions-sidebar-geocoder">
+            <div className="flex items-start gap-2 min-w-0">
+              <label className="text-sm w-20 flex-shrink-0 pt-2">Origin</label>
+              <div className="flex-1 min-w-0">
+                <div className="p-1">
+                  <GeocodeInput
+                    mapRef={mapRef}
+                    placeholder="Search origin"
+                    value={originQuery}
+                    onChange={(v) => { setOriginQuery(v); setOriginText(''); }}
+                    onSelect={(f) => { const c = f.center; if (c && c.length === 2) { setOriginCoord([c[0], c[1]]); setOriginText(f.place_name || ''); setOriginQuery(f.place_name || ''); try { const m = mapRef.current; if (m) m.easeTo({ center: c, zoom: 14 }); } catch(e){} } }}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-gray-400 truncate">{originText}</div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 min-w-0">
-              <label className="text-sm w-20 flex-shrink-0">Destination</label>
-              <input
-                className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
-                value={destText}
-                onChange={(e) => setDestText(e.target.value)}
-                placeholder="lng,lat"
-              />
-              <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('dest')}>Pick</button>
+            <div className="flex items-start gap-2 min-w-0">
+              <label className="text-sm w-20 flex-shrink-0 pt-2">Destination</label>
+              <div className="flex-1 min-w-0">
+                <div className="p-1">
+                  <GeocodeInput
+                    mapRef={mapRef}
+                    placeholder="Search destination"
+                    value={destQuery}
+                    onChange={(v) => { setDestQuery(v); setDestText(''); }}
+                    onSelect={(f) => { const c = f.center; if (c && c.length === 2) { setDestCoord([c[0], c[1]]); setDestText(f.place_name || ''); setDestQuery(f.place_name || ''); try { const m = mapRef.current; if (m) m.easeTo({ center: c, zoom: 14 }); } catch(e){} } }}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-gray-400 truncate">{destText}</div>
+              </div>
             </div>
 
             <div className="flex gap-2 mt-2">
@@ -310,10 +358,9 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
               <button onClick={handleClear} className="px-4 py-2 rounded-lg border border-black/10 bg-transparent text-sm">Clear</button>
             </div>
 
-            {pickMode && <div className="text-sm">Click on the map to set {pickMode}.</div>}
+            {/* pick-on-map mode removed; sidebar uses geocoder-only inputs */}
           </div>
         </div>
-      )}
     </div>
   );
 }
