@@ -2,7 +2,7 @@
 
 @import '@skeletonlabs/skeleton';
 @import '@skeletonlabs/skeleton/optional/presets';
-@import '@skeletonlabs/skeleton/themes/rose';
+@import '@skeletonlabs/skeleton/themes/cerberus';
 
 @source '../../node_modules/@skeletonlabs/skeleton-react/dist';
 
@@ -30,3 +30,164 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Map control theming that follows Skeleton/Tailwind color variables */
+.map-control {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  background: rgba(255,255,255,0.04);
+  color: var(--foreground);
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  width: 240px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+
+.map-select {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid rgba(0,0,0,0.08);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+/* control panel helper classes */
+.mc-title {
+  margin-bottom: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.mc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mc-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.mc-range {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 6px;
+}
+.mc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--foreground);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Option styling: native dropdowns sometimes ignore inherited styles; try to explicitly set colors */
+.map-select option {
+  color: var(--foreground) !important;
+  background: var(--background) !important;
+}
+
+/* WebKit / Blink specific appearance tweaks for better contrast */
+.map-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.zoom-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid rgba(0,0,0,0.06);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .map-control { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+  .map-select { border: 1px solid rgba(255,255,255,0.08); }
+  .zoom-btn { background: rgba(255,255,255,0.06); color: var(--foreground); border: 1px solid rgba(255,255,255,0.06); }
+}
+
+/* enhance label and control spacing */
+.map-control .mc-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.map-control .mc-label { flex: 1; font-size: 13px; color: var(--foreground); }
+.map-control .mc-title { margin-bottom: 8px; font-weight: 700; color: var(--foreground); }
+
+/* style sliders */
+.map-control input[type="range"] { appearance: none; height: 6px; background: rgba(0,0,0,0.12); border-radius: 6px; }
+.map-control input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4); cursor: pointer; }
+.map-control input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; }
+
+/* compact checkbox */
+.map-control input[type="checkbox"] { width: 16px; height: 16px; }
+
+.zoom-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid rgba(0,0,0,0.06);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+}
+.zoom-btn:hover { transform: translateY(-1px); opacity: 0.95; }
+
+/* Mapbox popup theming to match site theme */
+.mapboxgl-popup {
+  --popup-bg: var(--background);
+  --popup-fg: var(--foreground);
+}
+.mapboxgl-popup-content {
+  background: var(--popup-bg) !important;
+  color: var(--popup-fg) !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  font-size: 13px;
+}
+.mapboxgl-popup-tip {
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.2));
+}
+.mapboxgl-popup-close-button {
+  color: var(--popup-fg) !important;
+  opacity: 0.9;
+}
+.mapboxgl-popup a { color: inherit; }
+
+/* Custom React popup styles */
+.custom-popup { 
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(.2,.8,.2,1);
+  opacity: 0; 
+  transform: translateY(-6px) scale(0.98);
+  z-index: 50;
+}
+.custom-popup.visible { opacity: 1; transform: translateY(-10px) scale(1); }
+.mapbox-popup-inner button[aria-label="Close popup"] { border-radius: 6px; padding: 6px; background: rgba(0,0,0,0.04); }
+.mapbox-popup-inner button[aria-label="Close popup"]:focus { outline: 2px solid rgba(0,0,0,0.12); }
+.mapbox-popup-inner button[aria-label="Close popup"] { cursor: pointer; }
