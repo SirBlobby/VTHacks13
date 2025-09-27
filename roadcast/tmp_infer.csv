@@ -1,0 +1,11 @@
+orig_index,lat,lon,datetime,error
+0,38.91557,-77.031697,2011/03/06 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+1,38.875558,-77.017556,2011/03/06 08:45:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+2,38.872976,-77.016987,2011/03/05 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+3,38.929433,-77.003943,2011/03/08 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+4,38.89674,-77.027034,2011/03/08 17:18:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+5,38.89093,-76.993494,2011/03/12 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+6,38.908478,-77.040086,2011/03/12 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+7,38.846563,-76.976504,2011/03/12 05:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+8,38.894783,-77.01292,2011/03/12 18:30:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
+9,38.934204,-77.034567,2011/03/14 04:00:00+00,Either preprocess_meta or train_csv must be provided to derive feature stats
