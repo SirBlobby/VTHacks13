@@ -210,8 +210,9 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 	}, [heatRadius, heatIntensity, heatVisible, pointsVisible]);
 
 	return (
-		<div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
-			<div ref={mapContainerRef} style={{ width: size.width || '100%', height: size.height || '100%' }} />
+		// container should fill its parent so parent can control sizing (flex)
+		<div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
+			<div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 		</div>
 	);
 }

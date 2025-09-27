@@ -6,6 +6,7 @@ import ControlsPanel from './components/ControlsPanel';
 import PopupOverlay from './components/PopupOverlay';
 import Legend from './components/Legend';
 import MapNavigationControl from './components/MapNavigationControl';
+import DirectionsSidebar from './components/DirectionsSidebar';
 
 export default function Home() {
 	const mapRef = useRef<any>(null);
@@ -21,8 +22,13 @@ export default function Home() {
 	const [popupVisible, setPopupVisible] = useState(false);
 
 	return (
-		<div style={{ position: 'absolute', inset: 0 }}>
-			<ControlsPanel
+		<div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row' }}>
+			<div style={{ display: 'flex', flexDirection: 'column' }}>
+				<DirectionsSidebar mapRef={mapRef} profile="mapbox/driving" />
+			</div>
+
+			<div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+				<ControlsPanel
 				panelOpen={panelOpen}
 				onTogglePanel={(next) => { setPanelOpen(next); try { window.localStorage.setItem('map_panel_open', next ? '1' : '0'); } catch (e) {} }}
 				mapStyleChoice={mapStyleChoice}
@@ -37,7 +43,7 @@ export default function Home() {
 				onChangeIntensity={(v) => setHeatIntensity(v)}
 			/>
 
-			<MapView
+				<MapView
 				mapStyleChoice={mapStyleChoice}
 				heatRadius={heatRadius}
 				heatIntensity={heatIntensity}
@@ -46,12 +52,12 @@ export default function Home() {
 				onMapReady={(m) => { mapRef.current = m; }}
 				onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
 			/>
+				{/* Native Mapbox navigation control (zoom + compass) */}
+				<MapNavigationControl mapRef={mapRef} position="top-right" />
 
-			{/* Native Mapbox navigation control (zoom + compass) */}
-			<MapNavigationControl mapRef={mapRef} position="top-right" />
-
-			<Legend />
-			<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
+				<Legend />
+				<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
+			</div>
 		</div>
 	);
 }
