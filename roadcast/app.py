@@ -66,6 +66,9 @@ def predict_endpoint():
         except Exception:
             pass
 
+@app.route('/')
+def home():
+    return "<h1>Welcome to the Flask App</h1><p>Try /get-data or /health endpoints.</p>"
 
 @app.route('/predict-roadrisk', methods=['POST'])
 def predict_roadrisk():
