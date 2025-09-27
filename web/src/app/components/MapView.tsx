@@ -51,7 +51,13 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 			? 'mapbox://styles/mapbox/dark-v10'
 			: 'mapbox://styles/mapbox/streets-v11';
 
-		mapRef.current = new mapboxgl.Map({ container: mapEl, style: styleUrl, center: [-77.0369, 38.9072], zoom: 11 });
+		// bounding box roughly covering the DMV / Washington, DC area
+		const dcBounds: [[number, number], [number, number]] = [
+			[-77.25, 38.80], // southwest [lng, lat]
+			[-76.90, 39.05]  // northeast [lng, lat]
+		];
+
+		mapRef.current = new mapboxgl.Map({ container: mapEl, style: styleUrl, center: [-77.0369, 38.9072], zoom: 11, maxBounds: dcBounds });
 		const map = mapRef.current;
 
 		if (!dcDataRef.current) dcDataRef.current = generateDCPoints(900);
@@ -115,6 +121,8 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 
 		map.on('load', () => {
 			addDataAndLayers();
+			// ensure map is fit to DC bounds initially
+			try { map.fitBounds(dcBounds, { padding: 20 }); } catch (e) { /* ignore if fitBounds fails */ }
 
 			map.on('click', 'dc-point', (e) => {
 				const feature = e.features && e.features[0];
