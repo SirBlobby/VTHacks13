@@ -21,6 +21,7 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<mapboxgl.Map | null>(null);
+	const styleChoiceRef = useRef<'dark' | 'streets'>(mapStyleChoice);
 	const [size, setSize] = useState({ width: 0, height: 0 });
 	const dcDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
 
@@ -50,6 +51,13 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 			map.setStyle(styleUrl);
 		} catch (e) {
 			// some map versions may throw; still listen for styledata to re-add layers
+		}
+		// update the styleChoiceRef so newly-created layers pick up correct color
+		styleChoiceRef.current = mapStyleChoice;
+		// if the dc-point layer exists, update its circle-color to match the style
+		if (map.getLayer && map.getLayer('dc-point')) {
+			const color = mapStyleChoice === 'dark' ? '#ffffff' : '#000000';
+			try { map.setPaintProperty('dc-point', 'circle-color', color); } catch (e) {}
 		}
 	}, [mapStyleChoice]);
 
@@ -119,7 +127,7 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 					id: 'dc-point', type: 'circle', source: 'dc-quakes', minzoom: 12,
 					paint: {
 						'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 1, 2, 6, 8],
-						'circle-color': '#ffffff',
+						'circle-color': styleChoiceRef.current === 'dark' ? '#ffffff' : '#222222',
 						'circle-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 14, 1]
 					}
 				});
