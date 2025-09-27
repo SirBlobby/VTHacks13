@@ -5,7 +5,7 @@ import MapView, { PopupData } from './components/MapView';
 import ControlsPanel from './components/ControlsPanel';
 import PopupOverlay from './components/PopupOverlay';
 import Legend from './components/Legend';
-import ZoomControls from './components/ZoomControls';
+import MapNavigationControl from './components/MapNavigationControl';
 
 export default function Home() {
 	const mapRef = useRef<any>(null);
@@ -47,8 +47,10 @@ export default function Home() {
 				onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
 			/>
 
+			{/* Native Mapbox navigation control (zoom + compass) */}
+			<MapNavigationControl mapRef={mapRef} position="top-right" />
+
 			<Legend />
-			<ZoomControls mapRef={mapRef} />
 			<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
 		</div>
 	);

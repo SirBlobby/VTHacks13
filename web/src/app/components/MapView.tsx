@@ -41,11 +41,27 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 		return () => ro.disconnect();
 	}, []);
 
+	// react to style choice changes
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map) return;
+		const styleUrl = mapStyleChoice === 'dark' ? 'mapbox://styles/mapbox/dark-v10' : 'mapbox://styles/mapbox/streets-v11';
+		try {
+			map.setStyle(styleUrl);
+		} catch (e) {
+			// some map versions may throw; still listen for styledata to re-add layers
+		}
+	}, [mapStyleChoice]);
+
 	useEffect(() => {
 		const mapEl = mapContainerRef.current;
 		if (!mapEl) return;
 
-		mapboxgl.accessToken = 'pk.eyJ1IjoicGllbG9yZDc1NyIsImEiOiJjbWcxdTd6c3AwMXU1MmtxMDh6b2l5amVrIn0.5Es0azrah23GX1e9tmbjGw';
+		const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+		if (!token) {
+			console.warn('Missing NEXT_PUBLIC_MAPBOX_TOKEN environment variable. Mapbox map will not initialize correctly.');
+		}
+		mapboxgl.accessToken = token ?? '';
 
 		const styleUrl = mapStyleChoice === 'dark'
 			? 'mapbox://styles/mapbox/dark-v10'
