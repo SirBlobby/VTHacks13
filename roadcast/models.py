@@ -1,5 +1,60 @@
 import torch
 import torch.nn as nn
+import math
+from typing import Union, Iterable
+import numpy as np
+import torch as _torch
+
+def accidents_to_bucket(count: Union[int, float, Iterable],
+                        max_count: int = 20000,
+                        num_bins: int = 10) -> Union[int, list, _torch.Tensor, np.ndarray]:
+    """
+    Map accident counts to simple buckets 1..num_bins (equal-width).
+    Example: max_count=20000, num_bins=10 -> bin width = 2000
+      0-1999 -> 1, 2000-3999 -> 2, ..., 18000-20000 -> 10
+
+    Args:
+      count: single value or iterable (list/numpy/torch). Values <=0 map to 1, values >= max_count map to num_bins.
+      max_count: expected maximum count (top of highest bin).
+      num_bins: number of buckets (default 10).
+
+    Returns:
+      Same type as input (int for scalar, list/numpy/torch for iterables) with values in 1..num_bins.
+    """
+    width = max_count / float(num_bins)
+    def _bucket_scalar(x):
+        # clamp
+        x = 0.0 if x is None else float(x)
+        if x <= 0:
+            return 1
+        if x >= max_count:
+            return num_bins
+        return int(x // width) + 1
+
+    # scalar int/float
+    if isinstance(count, (int, float)):
+        return _bucket_scalar(count)
+
+    # torch tensor
+    if isinstance(count, _torch.Tensor):
+        x = count.clone().float()
+        x = _torch.clamp(x, min=0.0, max=float(max_count))
+        buckets = (x // width).to(_torch.long) + 1
+        buckets = _torch.clamp(buckets, min=1, max=num_bins)
+        return buckets
+
+    # numpy array
+    if isinstance(count, np.ndarray):
+        x = np.clip(count.astype(float), 0.0, float(max_count))
+        buckets = (x // width).astype(int) + 1
+        return np.clip(buckets, 1, num_bins)
+
+    # generic iterable -> list
+    if isinstance(count, Iterable):
+        return [ _bucket_scalar(float(x)) for x in count ]
+
+    # fallback
+    return _bucket_scalar(float(count))
 
 
 class SimpleCNN(nn.Module):
@@ -18,7 +73,16 @@ class SimpleCNN(nn.Module):
         with torch.no_grad():
             dummy = torch.zeros(1, *input_size)
             feat = self.features(dummy)
-            flat_features = int(feat.numel() / feat.shape[0])
+            # flat_features was previously computed as:
+            #   int(feat.numel() / feat.shape[0])
+            # Explanation:
+            #   feat.shape == (N, C, H, W)  (for image inputs)
+            #   feat.numel() == N * C * H * W
+            #   dividing by N (feat.shape[0]) yields C * H * W, i.e. flattened size per sample
+            # Clearer alternative using tensor shape:
+            flat_features = int(torch.prod(torch.tensor(feat.shape[1:])).item())
+            # If you need the linear index mapping for coordinates (c, h, w):
+            #   idx = c * (H * W) + h * W + w
 
         self.classifier = nn.Sequential(
             nn.Flatten(),

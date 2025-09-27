@@ -1,0 +1,29 @@
+# Generated model checkpoints and metadata
+model.pth
+*.pt
+*.pth
+preprocess_meta.npz
+tmp_infer.csv
+label_info.json
+label_assignments.npz
+# Saved label stores (kmeans etc.)
+*.npz
+kmeans_centers*.npz
+
+# Ignore training output directories
+output/
+checkpoints/
+
+# Python caches and virtualenvs
+__pycache__/
+*.py[cod]
+.env/
+.venv/
+
+# Test and notebook caches
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

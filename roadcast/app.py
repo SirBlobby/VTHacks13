@@ -80,14 +80,26 @@ def predict_roadrisk():
     dt = payload.get('datetime')
     street = payload.get('street', '')
     roadrisk_url = payload.get('roadrisk_url')
-    api_key = payload.get('api_key') or os.environ.get('OPENWEATHER_KEY')
+    # prefer explicit api_key in request, otherwise read from OPENWEATHER_API_KEY env var
+    api_key = payload.get('api_key') or os.environ.get('OPENWEATHER_API_KEY')
 
     if lat is None or lon is None:
         return jsonify({"error": "lat and lon are required fields"}), 400
 
     try:
         from openweather_inference import predict_from_openweather
-        res = predict_from_openweather(lat, lon, dt_iso=dt, street=street, api_key=api_key, train_csv=os.path.join(os.getcwd(), 'data.csv'), preprocess_meta=None, model_path=os.path.join(os.getcwd(), 'model.pth'), centers_path=os.path.join(os.getcwd(), 'kmeans_centers_all.npz'), roadrisk_url=roadrisk_url)
+        # pass api_key (may be None) to the inference helper; helper will raise if a key is required
+        res = predict_from_openweather(
+            lat, lon,
+            dt_iso=dt,
+            street=street,
+            api_key=api_key,
+            train_csv=os.path.join(os.getcwd(), 'data.csv'),
+            preprocess_meta=None,
+            model_path=os.path.join(os.getcwd(), 'model.pth'),
+            centers_path=os.path.join(os.getcwd(), 'kmeans_centers_all.npz'),
+            roadrisk_url=roadrisk_url
+        )
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
