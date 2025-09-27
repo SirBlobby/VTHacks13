@@ -255,7 +255,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
       ref={containerRef}
       role="region"
       aria-label="Directions sidebar"
-      className={`flex flex-col transition-all duration-200 ease-in-out z-40 ${collapsed ? 'w-11 h-11 self-start m-3 rounded-full' : 'w-[340px] h-full bg-[#111214] rounded-tr-lg rounded-br-lg'}`}
+  className={`relative flex flex-col z-40 ${collapsed ? 'w-11 h-11 self-start m-3 rounded-full overflow-hidden bg-transparent' : 'w-[340px] h-full bg-[#111214] rounded-tr-lg rounded-br-lg'}`}
     >
       {/* Toggle */}
       <button
@@ -263,50 +263,57 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
         onClick={() => setCollapsed((s) => !s)}
         title={collapsed ? 'Expand directions' : 'Minimize directions'}
         className={collapsed
-          ? 'w-full h-full rounded-full bg-white text-black/85 flex items-center justify-center shadow-md border border-black/10'
-          : 'absolute top-3 right-3 w-9 h-9 rounded-md bg-white/5 text-white border border-black/10 flex items-center justify-center hover:bg-white/10'
+          ? 'w-full h-full rounded-full bg-white text-black/85 flex items-center justify-center shadow-md border border-black/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white/60'
+          : 'absolute top-3 right-3 -m-1 p-1 w-9 h-9 rounded-md bg-white/5 text-white border border-black/10 flex items-center justify-center hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white/60 z-50 pointer-events-auto'
         }
       >
-        <span aria-hidden="true" className="text-lg leading-none">☰</span>
+        {/* increase hit area with an inner svg and ensure cursor is pointer */}
+        <svg aria-hidden="true" className="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 6h18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 12h18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 18h18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
 
-      {/* Content (hidden when collapsed) */}
-      <div className={`${collapsed ? 'hidden' : 'flex'} flex-col flex-1 p-4 overflow-auto`} aria-hidden={collapsed}>
-        <div className="flex items-center justify-between mb-3 sticky top-2 z-10">
-          <strong className="text-sm">Directions</strong>
+      {/* Content — render only when expanded to avoid any collapsed 'strip' */}
+      {!collapsed && (
+        <div className="flex flex-col flex-1 p-4 overflow-auto">
+          <div className="flex items-center justify-between mb-3 sticky top-2 z-10">
+            <strong className="text-sm">Directions</strong>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <label className="text-sm w-20 flex-shrink-0">Origin</label>
+              <input
+                className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
+                value={originText}
+                onChange={(e) => setOriginText(e.target.value)}
+                placeholder="lng,lat"
+              />
+              <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('origin')}>Pick</button>
+            </div>
+
+            <div className="flex items-center gap-2 min-w-0">
+              <label className="text-sm w-20 flex-shrink-0">Destination</label>
+              <input
+                className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
+                value={destText}
+                onChange={(e) => setDestText(e.target.value)}
+                placeholder="lng,lat"
+              />
+              <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('dest')}>Pick</button>
+            </div>
+
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-[#ff7e5f] to-[#ffb199] text-white shadow-md">{loading ? 'Routing…' : 'Get Route'}</button>
+              <button onClick={handleClear} className="px-4 py-2 rounded-lg border border-black/10 bg-transparent text-sm">Clear</button>
+            </div>
+
+            {pickMode && <div className="text-sm">Click on the map to set {pickMode}.</div>}
+          </div>
         </div>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <label className="text-sm w-20 flex-shrink-0">Origin</label>
-            <input
-              className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
-              value={originText}
-              onChange={(e) => setOriginText(e.target.value)}
-              placeholder="lng,lat"
-            />
-            <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('origin')}>Pick</button>
-          </div>
-
-          <div className="flex items-center gap-2 min-w-0">
-            <label className="text-sm w-20 flex-shrink-0">Destination</label>
-            <input
-              className="flex-1 min-w-0 px-3 py-2 rounded-md border border-black/10 bg-transparent text-sm"
-              value={destText}
-              onChange={(e) => setDestText(e.target.value)}
-              placeholder="lng,lat"
-            />
-            <button className="ml-2 px-3 py-1 rounded-md bg-white/5 text-sm flex-shrink-0" onClick={() => setPickMode('dest')}>Pick</button>
-          </div>
-
-          <div className="flex gap-2 mt-2">
-            <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-[#ff7e5f] to-[#ffb199] text-white shadow-md">{loading ? 'Routing…' : 'Get Route'}</button>
-            <button onClick={handleClear} className="px-4 py-2 rounded-lg border border-black/10 bg-transparent text-sm">Clear</button>
-          </div>
-
-          {pickMode && <div className="text-sm">Click on the map to set {pickMode}.</div>}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
