@@ -44,3 +44,4 @@ package-lock.json
 .next/
 
 .venv/
+roadcast/data.csv
