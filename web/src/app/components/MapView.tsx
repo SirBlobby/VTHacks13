@@ -127,7 +127,7 @@ export default function MapView({ mapStyleChoice, heatRadius, heatIntensity, hea
 					id: 'dc-point', type: 'circle', source: 'dc-quakes', minzoom: 12,
 					paint: {
 						'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 1, 2, 6, 8],
-						'circle-color': styleChoiceRef.current === 'dark' ? '#ffffff' : '#222222',
+						'circle-color': styleChoiceRef.current === 'dark' ? '#ffffff' : '#a9a9a9',
 						'circle-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 14, 1]
 					}
 				});
