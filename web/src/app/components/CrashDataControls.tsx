@@ -6,9 +6,10 @@ import { UseCrashDataResult } from '../hooks/useCrashData';
 interface CrashDataControlsProps {
   crashDataHook: UseCrashDataResult;
   onDataLoaded?: (dataCount: number) => void;
+  mapStyleChoice?: 'dark' | 'streets';
 }
 
-export default function CrashDataControls({ crashDataHook, onDataLoaded }: CrashDataControlsProps) {
+export default function CrashDataControls({ crashDataHook, onDataLoaded, mapStyleChoice = 'dark' }: CrashDataControlsProps) {
   const { data, loading, error, pagination, loadMore, refresh, yearFilter, setYearFilter } = crashDataHook;
   const currentYear = new Date().getFullYear().toString();
   const [selectedYear, setSelectedYear] = useState<string>(yearFilter || currentYear);
@@ -47,39 +48,40 @@ export default function CrashDataControls({ crashDataHook, onDataLoaded }: Crash
   }, [data.length, onDataLoaded]);
 
   return (
-    <div style={{
+        <div style={{
       position: 'absolute',
-      bottom: '320px', // Position above the map controls panel with some margin
-      right: '12px',   // Align with map controls panel
-      backgroundColor: 'rgba(26, 26, 26, 0.95)', // Match the map controls styling more closely
-      color: 'white',
-      padding: '12px',
-      borderRadius: '10px', // Match map controls border radius
-      zIndex: 30,
-      fontSize: '13px',    // Match map controls font size
-      width: '240px',      // Match map controls width
-      backdropFilter: 'blur(8px)', // Match map controls backdrop filter
-      border: '1px solid rgba(64, 64, 64, 0.5)', // Add subtle border
-      boxShadow: '0 6px 18px rgba(0,0,0,0.15)' // Match map controls shadow
+      top: '12px',    // Position at top right instead of bottom
+      right: '12px',  // Right side positioning
+      backgroundColor: 'var(--panel-darker)', // Use new color palette
+      color: '#f9fafb', // White text for both themes
+      padding: '16px',
+      borderRadius: '12px',
+      zIndex: 1000,   // Much higher z-index to appear above everything
+      fontSize: '14px',
+      fontWeight: '500',
+      width: '280px',
+      backdropFilter: 'blur(20px)',
+      border: '2px solid var(--panel-medium)',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.2)'
     }}>
       {/* Crash Density Legend */}
-      <div style={{ marginBottom: '12px' }}>
-        <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '8px' }}>Crash Density</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <div style={{ width: 18, height: 12, background: 'rgba(0,0,0,0)', border: '1px solid rgba(128, 128, 128, 0.5)' }} />
-            <div style={{ width: 18, height: 12, background: 'rgba(255,255,0,0.7)' }} />
-            <div style={{ width: 18, height: 12, background: 'rgba(255,165,0,0.8)' }} />
-            <div style={{ width: 18, height: 12, background: 'rgba(255,69,0,0.9)' }} />
-            <div style={{ width: 18, height: 12, background: 'rgba(255,0,0,0.95)' }} />
-            <div style={{ width: 18, height: 12, background: 'rgba(139,0,0,1)' }} />
+      <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '10px', color: '#f9fafb' }}>Crash Density</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <div style={{ width: 20, height: 14, background: 'rgba(0,0,0,0)', border: '1px solid rgba(249, 250, 251, 0.4)', borderRadius: '2px' }} />
+            <div style={{ width: 20, height: 14, background: 'rgba(255,255,0,0.8)', borderRadius: '2px' }} />
+            <div style={{ width: 20, height: 14, background: 'rgba(255,165,0,0.85)', borderRadius: '2px' }} />
+            <div style={{ width: 20, height: 14, background: 'rgba(255,69,0,0.9)', borderRadius: '2px' }} />
+            <div style={{ width: 20, height: 14, background: 'rgba(255,0,0,0.95)', borderRadius: '2px' }} />
+            <div style={{ width: 20, height: 14, background: 'rgba(139,0,0,1)', borderRadius: '2px' }} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 11, color: '#ccc' }}>Low</span>
-            <span style={{ fontSize: 11, color: '#ccc' }}>High</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ fontSize: 12, color: '#ffffff', fontWeight: '600' }}>Low</span>
+            <span style={{ fontSize: 12, color: '#ffffff', fontWeight: '600' }}>High</span>
           </div>
         </div>
-        <div style={{ borderTop: '1px solid rgba(64, 64, 64, 0.5)', marginTop: '8px', paddingTop: '8px' }}></div>
+        <div style={{ borderTop: mapStyleChoice === 'streets' ? '1px solid rgba(156, 163, 175, 0.5)' : '1px solid rgba(64, 64, 64, 0.5)', marginTop: '8px', paddingTop: '8px' }}></div>
       </div>
       
       <div style={{ marginBottom: '8px', fontWeight: 700, fontSize: '14px' }}>
@@ -87,37 +89,42 @@ export default function CrashDataControls({ crashDataHook, onDataLoaded }: Crash
       </div>
       
       {/* Year Filter */}
-      <div style={{ marginBottom: '8px' }}>
-        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#ccc' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#e5e7eb', fontWeight: '600' }}>
           Filter by Year:
         </label>
         <select 
-          value={selectedYear} 
+          value={yearFilter || ''} 
           onChange={(e) => handleYearChange(e.target.value)}
           style={{
-            backgroundColor: 'rgba(64, 64, 64, 0.8)',
-            color: 'white',
-            border: '1px solid rgba(128, 128, 128, 0.5)',
-            borderRadius: '4px',
-            padding: '4px 8px',
-            fontSize: '12px',
             width: '100%',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            backgroundColor: 'var(--panel-dark)',
+            color: '#f9fafb',
+            border: '2px solid var(--panel-medium)',
+            fontSize: '14px',
+            fontWeight: '500',
+            outline: 'none',
             cursor: 'pointer'
           }}
         >
-          {getAvailableYears().map(year => (
-            <option key={year} value={year}>{year}</option>
+          <option value="">All Years</option>
+          {Array.from({ length: 2025 - 2015 + 1 }, (_, i) => 2015 + i).map(year => (
+            <option key={year} value={year} style={{ backgroundColor: 'var(--panel-dark)', color: '#f9fafb' }}>
+              {year}
+            </option>
           ))}
         </select>
       </div>
       
-      <div style={{ marginBottom: '6px' }}>
+      <div style={{ marginBottom: '12px', color: '#f9fafb', fontWeight: '600', fontSize: '15px' }}>
         Loaded: {data.length.toLocaleString()} crashes
         {yearFilter && ` (${yearFilter})`}
       </div>
       
       {pagination && !yearFilter && (
-        <div style={{ marginBottom: '6px', fontSize: '12px', color: '#ccc' }}>
+        <div style={{ marginBottom: '8px', fontSize: '13px', color: '#9ca3af', fontWeight: '500' }}>
           Page {pagination.page} of {pagination.totalPages}
           <br />
           Total: {pagination.total.toLocaleString()} crashes
@@ -125,19 +132,29 @@ export default function CrashDataControls({ crashDataHook, onDataLoaded }: Crash
       )}
       
       {pagination && yearFilter && (
-        <div style={{ marginBottom: '6px', fontSize: '12px', color: '#ccc' }}>
+        <div style={{ marginBottom: '8px', fontSize: '13px', color: '#9ca3af', fontWeight: '500' }}>
           All crashes for {yearFilter} loaded
         </div>
       )}
       
       {loading && (
-        <div style={{ marginBottom: '8px', color: '#ffff99' }}>
+        <div style={{ 
+          marginBottom: '8px', 
+          color: '#fbbf24',
+          fontWeight: '600',
+          fontSize: '14px'
+        }}>
           Loading...
         </div>
       )}
       
       {error && (
-        <div style={{ marginBottom: '8px', color: '#ff6666', fontSize: '12px' }}>
+        <div style={{ 
+          marginBottom: '8px', 
+          color: '#f87171', 
+          fontSize: '13px',
+          fontWeight: '600'
+        }}>
           Error: {error}
         </div>
       )}

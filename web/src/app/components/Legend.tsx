@@ -6,12 +6,12 @@ export default function Legend() {
 	return (
 		<div style={{ position: 'absolute', bottom: '580px', right: '12px', zIndex: 30 }}>
 			<div style={{ 
-				backgroundColor: 'rgba(26, 26, 26, 0.95)', 
+				backgroundColor: 'var(--panel-darker)', 
 				color: 'white', 
 				padding: '12px', 
 				borderRadius: '10px', 
 				boxShadow: '0 6px 18px rgba(0,0,0,0.15)', 
-				border: '1px solid rgba(64, 64, 64, 0.5)', 
+				border: '1px solid var(--panel-medium)', 
 				fontSize: '13px',
 				width: '240px',
 				backdropFilter: 'blur(8px)'

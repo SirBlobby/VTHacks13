@@ -155,7 +155,7 @@ export default function GeocodeInput({
   return (
     <div className="relative" ref={containerRef}>
       {/* Search bar container matching the design */}
-      <div className="flex items-center bg-[#2a2a2a] border border-[#404040] rounded-lg overflow-hidden">
+      <div className="flex items-center border rounded-lg overflow-hidden" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }}>
         {/* Input field */}
         <input
           type="text"
@@ -181,7 +181,10 @@ export default function GeocodeInput({
               onMapPick();
             }
           }}
-          className="px-4 py-3 bg-[#f5f5f5] text-[#1f2937] hover:bg-[#e5e7eb] focus:outline-none focus:ring-2 focus:ring-[#9ca3af] focus:ring-offset-2 focus:ring-offset-[#2a2a2a] transition-colors"
+          className="px-4 py-3 text-[#1f2937] focus:outline-none focus:ring-2 focus:ring-[#9ca3af] focus:ring-offset-2 transition-colors hover:opacity-80"
+          style={{ 
+            backgroundColor: 'var(--panel-lightest)'
+          }}
           title={isMapPickingMode ? "Cancel map picking" : "Pick point on map"}
         >
           {isMapPickingMode ? (
@@ -201,11 +204,14 @@ export default function GeocodeInput({
 
       {/* Suggestions dropdown */}
       {!isMapPickingMode && showDropdown && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 mt-1 bg-[#2a2a2a] border border-[#404040] rounded-lg shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
+        <div className="absolute left-0 right-0 mt-1 border rounded-lg shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }}>
           {suggestions.map((f: any, i: number) => (
             <button 
               key={f.id || i} 
-              className="w-full text-left px-4 py-3 hover:bg-[#3a3a3a] border-b border-[#404040] last:border-b-0" 
+              className="w-full text-left px-4 py-3 border-b last:border-b-0 transition-colors" 
+              style={{ borderColor: 'var(--panel-light)' }}
+              onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-light)'}
+              onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'transparent'} 
               onClick={() => { 
                 onSelect(f); 
                 setSuggestions([]); 

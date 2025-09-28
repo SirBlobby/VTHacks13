@@ -20,6 +20,14 @@
   --text-secondary: #4b5563;
   --text-tertiary: #6b7280;
   --text-muted: #9ca3af;
+
+  /* New color palette for panels and sidebars */
+  --panel-lightest: #E4E4E5;
+  --panel-light: #BEBEBE;
+  --panel-medium: #949494;
+  --panel-dark: #7A7A7A;
+  --panel-darker: #545454;
+  --panel-darkest: #3C3C3C;
 }
 
 @theme inline {
@@ -44,6 +52,14 @@
     --text-secondary: #d1d5db;
     --text-tertiary: #a1a1aa;
     --text-muted: #71717a;
+
+    /* New color palette for panels and sidebars - darker versions for dark mode */
+    --panel-lightest: #7A7A7A;
+    --panel-light: #545454;
+    --panel-medium: #3C3C3C;
+    --panel-dark: #2A2A2A;
+    --panel-darker: #1F1F1F;
+    --panel-darkest: #141414;
   }
 }
 

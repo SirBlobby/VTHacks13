@@ -10,11 +10,13 @@ interface Props {
   mapRef: React.MutableRefObject<mapboxgl.Map | null>;
   profile?: "mapbox/driving" | "mapbox/walking" | "mapbox/cycling";
   onMapPickingModeChange?: (isActive: boolean) => void; // callback when map picking mode changes
+  gradientRoutes?: boolean; // whether to use gradient routes or solid routes
+  mapStyleChoice?: 'dark' | 'streets'; // map style for panel theming
 }
 
 // Routing now uses geocoder-only selection inside the sidebar (no manual coordinate parsing)
 
-export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", onMapPickingModeChange }: Props) {
+export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", onMapPickingModeChange, gradientRoutes = true, mapStyleChoice = 'dark' }: Props) {
   // Sidebar supports collapse via a hamburger button in the header
   const [collapsed, setCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -53,6 +55,15 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
       onMapPickingModeChange(isOriginMapPicking || isDestMapPicking);
     }
   }, [isOriginMapPicking, isDestMapPicking, onMapPickingModeChange]);
+
+  // Handle gradient routes setting changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || routes.length === 0) return;
+
+    // Re-render existing routes with updated gradient setting
+    renderMultipleRoutes(map, routes, selectedRouteIndex);
+  }, [gradientRoutes]);
 
   // Handle map clicks for point selection
   useEffect(() => {
@@ -223,7 +234,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
 
   // Function to render multiple routes with different styles
   function renderMultipleRoutes(map: mapboxgl.Map, routes: any[], selectedIndex: number) {
-    const routeColors = ['#2563eb', '#dc2626']; // blue, red
+    const routeColors = ['#2563eb', '#9333ea']; // blue, purple
     const routeWidths = [6, 4]; // selected route is thicker
     const routeOpacities = [0.95, 0.7]; // selected route is more opaque
 
@@ -274,8 +285,8 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
         });
       }
 
-      // Apply crash density gradient to all routes if crash data is available
-      if (crashDataHook.data.length > 0) {
+      // Apply crash density gradient to all routes if crash data is available and gradient routes enabled
+      if (gradientRoutes && crashDataHook.data.length > 0) {
         const routeCoordinates = (route.geometry as any).coordinates as [number, number][];
         const crashDensities = calculateRouteCrashDensity(routeCoordinates, crashDataHook.data, 150);
         const gradientStops = createRouteGradientStops(crashDensities);
@@ -285,7 +296,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
         map.setPaintProperty(layerId, 'line-width', isSelected ? routeWidths[0] : routeWidths[1]);
         map.setPaintProperty(layerId, 'line-opacity', isSelected ? routeOpacities[0] : routeOpacities[1]);
       } else {
-        // Apply solid color styling when no crash data
+        // Apply solid color styling when gradient routes disabled or no crash data
         map.setPaintProperty(layerId, 'line-gradient', undefined); // Remove gradient
         map.setPaintProperty(layerId, 'line-color', routeColors[index] || routeColors[0]);
         map.setPaintProperty(layerId, 'line-width', isSelected ? routeWidths[0] : routeWidths[1]);
@@ -303,7 +314,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
             source: sourceId,
             layout: { "line-join": "round", "line-cap": "round" },
             paint: {
-              "line-color": "#2563eb", // Blue outline
+              "line-color": "#60a5fa", // Light blue outline
               "line-width": routeWidths[0] + 4, // Thicker than the main line
               "line-opacity": 0.8
             },
@@ -553,22 +564,44 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
     };
   }, [collapsed, mapRef]);
 
+  // Dynamic styling based on map style
+  const getSidebarClasses = () => {
+    const baseClasses = "relative flex flex-col z-40";
+    
+    if (collapsed) {
+      return `${baseClasses} w-11 h-11 self-start m-3 rounded-full overflow-hidden bg-transparent`;
+    }
+    
+    // Use dark backgrounds for both themes for better contrast
+    return `${baseClasses} w-[340px] h-full rounded-tr-lg rounded-br-lg border-r` + 
+           ` bg-[var(--panel-darker)] border-[var(--panel-medium)]`;
+  };
+
+  const getToggleButtonClasses = () => {
+    if (collapsed) {
+      // Dark button for collapsed state on both themes
+      return 'w-full h-full rounded-full text-[#f9fafb] flex items-center justify-center shadow-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#9ca3af]' +
+             ' bg-[var(--panel-dark)] border-[var(--panel-medium)]';
+    } else {
+      // Dark button for expanded state on both themes
+      return 'absolute top-3 right-3 -m-1 p-1 w-9 h-9 rounded-md text-[#f9fafb] border flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#9ca3af] z-50 pointer-events-auto' +
+             ' bg-[var(--panel-dark)] border-[var(--panel-medium)] hover:bg-[var(--panel-medium)]';
+    }
+  };
+
   return (
     <div
       ref={containerRef}
       role="region"
       aria-label="Directions sidebar"
-  className={`relative flex flex-col z-40 ${collapsed ? 'w-11 h-11 self-start m-3 rounded-full overflow-hidden bg-transparent' : 'w-[340px] h-full bg-[#1a1a1a] rounded-tr-lg rounded-br-lg border-r border-[#2a2a2a]'}`}
+      className={getSidebarClasses()}
     >
       {/* Toggle */}
       <button
         aria-label={collapsed ? 'Expand directions' : 'Collapse directions'}
         onClick={() => setCollapsed((s) => !s)}
         title={collapsed ? 'Expand directions' : 'Minimize directions'}
-        className={collapsed
-          ? 'w-full h-full rounded-full bg-[#f5f5f5] text-[#1f2937] flex items-center justify-center shadow-md border border-[#e0e0e0] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#9ca3af]'
-          : 'absolute top-3 right-3 -m-1 p-1 w-9 h-9 rounded-md bg-[#2a2a2a] text-[#d1d5db] border border-[#404040] flex items-center justify-center hover:bg-[#363636] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#9ca3af] z-50 pointer-events-auto'
-        }
+        className={getToggleButtonClasses()}
       >
         {/* increase hit area with an inner svg and ensure cursor is pointer */}
         <svg aria-hidden="true" className="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -650,13 +683,13 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
             </div>
 
             <div className="flex gap-2 mt-2">
-              <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white shadow-md disabled:opacity-60 transition-colors">{loading ? 'Routing…' : 'Get Route'}</button>
-              <button onClick={handleClear} className="px-4 py-2 rounded-lg border border-[#404040] bg-[#2a2a2a] text-sm text-[#d1d5db] hover:bg-[#363636]">Clear</button>
+              <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-4 py-2 rounded-lg text-white shadow-md disabled:opacity-60 transition-colors" style={{ backgroundColor: 'var(--panel-dark)' }}>{loading ? 'Routing…' : 'Get Route'}</button>
+              <button onClick={handleClear} className="px-4 py-2 rounded-lg border text-sm text-[#d1d5db] transition-colors" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }} onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-light)'} onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-medium)'}>Clear</button>
             </div>
 
             {/* Route Options */}
             {routes.length > 1 && (
-              <div className="mt-4 p-3 rounded-lg bg-[#2a2a2a] border border-[#404040]">
+              <div className="mt-4 p-3 rounded-lg border" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }}>
                 <div className="flex items-center gap-2 mb-3">
                   <svg className="w-4 h-4 text-[#d1d5db]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3" />
@@ -666,7 +699,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
                 <div className="space-y-2">
                   {routes.map((route, index) => {
                     const isSelected = index === selectedRouteIndex;
-                    const colors = ['#2563eb', '#dc2626']; // blue, red
+                    const colors = ['#2563eb', '#9333ea']; // blue, purple
                     const labels = ['Route 1 (Fastest)', 'Route 2 (Alternative)'];
                     const duration = Math.round(route.duration / 60);
                     const distance = Math.round(route.distance / 1000 * 10) / 10;
@@ -682,9 +715,18 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
                         }}
                         className={`w-full text-left p-2 rounded-md border transition-colors ${
                           isSelected 
-                            ? 'border-[#2563eb] bg-[#1e40af]/20' 
-                            : 'border-[#404040] bg-[#1a1a1a] hover:bg-[#363636]'
+                            ? 'border-[#2563eb]' 
+                            : 'border-[var(--panel-light)]'
                         }`}
+                        style={{
+                          backgroundColor: isSelected ? 'var(--panel-light)' : 'var(--panel-medium)',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-light)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-medium)';
+                        }}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -717,7 +759,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
 
             {/* Show reroute information if available */}
             {rerouteInfo && (
-              <div className="mt-4 p-3 rounded-lg bg-[#065f46] border border-[#10b981]">
+              <div className="mt-4 p-3 rounded-lg border border-[#10b981]" style={{ backgroundColor: 'var(--panel-dark)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <svg className="w-4 h-4 text-[#10b981]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -747,7 +789,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
 
             {/* Route Safety Legend */}
             {(originCoord && destCoord) && (
-              <div className="mt-4 p-3 rounded-lg bg-[#2a2a2a] border border-[#404040]">
+              <div className="mt-4 p-3 rounded-lg border" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <svg className="w-4 h-4 text-[#d1d5db]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -768,7 +810,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
                     <span className="text-[#d1d5db]">High risk</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-1 bg-[#dc2626] rounded"></div>
+                    <div className="w-4 h-1 bg-[#9333ea] rounded"></div>
                     <span className="text-[#d1d5db]">Very high risk</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -784,7 +826,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
 
             {/* Map picking mode indicator */}
             {(isOriginMapPicking || isDestMapPicking) && (
-              <div className="mt-4 p-3 rounded-lg bg-[#1e40af] border border-[#3b82f6]">
+              <div className="mt-4 p-3 rounded-lg border" style={{ backgroundColor: 'var(--panel-dark)', borderColor: '#3b82f6' }}>
                 <div className="flex items-center gap-2">
                   <svg className="w-5 h-5 text-[#93c5fd]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />

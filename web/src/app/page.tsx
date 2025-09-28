@@ -2,11 +2,10 @@
 
 import React, { useRef, useState } from 'react';
 import MapView, { PopupData } from './components/MapView';
-import ControlsPanel from './components/ControlsPanel';
+import UnifiedControlPanel from './components/UnifiedControlPanel';
 import PopupOverlay from './components/PopupOverlay';
 import MapNavigationControl from './components/MapNavigationControl';
 import DirectionsSidebar from './components/DirectionsSidebar';
-import CrashDataControls from './components/CrashDataControls';
 import { useCrashData } from './hooks/useCrashData';
 
 export default function Home() {
@@ -16,9 +15,8 @@ export default function Home() {
 	const [mapStyleChoice, setMapStyleChoice] = useState<'dark' | 'streets'>('dark');
 	const [heatRadius, setHeatRadius] = useState(16);
 	const [heatIntensity, setHeatIntensity] = useState(1);
-	const [panelOpen, setPanelOpen] = useState<boolean>(() => {
-		try { const v = typeof window !== 'undefined' ? window.localStorage.getItem('map_panel_open') : null; return v === null ? true : v === '1'; } catch (e) { return true; }
-	});
+	const [gradientRoutes, setGradientRoutes] = useState(true);
+
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
 	const [isMapPickingMode, setIsMapPickingMode] = useState(false);
@@ -35,11 +33,11 @@ export default function Home() {
 						mapRef={mapRef} 
 						profile="mapbox/driving" 
 						onMapPickingModeChange={setIsMapPickingMode}
+						gradientRoutes={gradientRoutes}
+						mapStyleChoice={mapStyleChoice}
 					/>
 				</div>
-				<ControlsPanel
-					panelOpen={panelOpen}
-					onTogglePanel={(next) => { setPanelOpen(next); try { window.localStorage.setItem('map_panel_open', next ? '1' : '0'); } catch (e) {} }}
+				<UnifiedControlPanel
 					mapStyleChoice={mapStyleChoice}
 					onChangeStyle={(v) => setMapStyleChoice(v)}
 					heatVisible={heatVisible}
@@ -50,6 +48,9 @@ export default function Home() {
 					onChangeRadius={(v) => setHeatRadius(v)}
 					heatIntensity={heatIntensity}
 					onChangeIntensity={(v) => setHeatIntensity(v)}
+					gradientRoutes={gradientRoutes}
+					onToggleGradientRoutes={(v) => setGradientRoutes(v)}
+					crashDataHook={crashDataHook}
 				/>
 
 				<MapView
@@ -69,8 +70,6 @@ export default function Home() {
 				{/* Native Mapbox navigation control (zoom + compass) */}
 				<MapNavigationControl mapRef={mapRef} position="top-right" />
 				
-				{/* Crash data loading controls with integrated crash density legend */}
-				<CrashDataControls crashDataHook={crashDataHook} />
 				<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
 			</div>
 		</div>
