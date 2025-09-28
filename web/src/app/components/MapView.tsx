@@ -5,7 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import { generateDCPoints, generateDCPointsWithAI, haversine, PointFeature, convertCrashDataToGeoJSON, convertCrashDataToGeoJSONWithAI } from '../lib/mapUtils';
+import { convertSyntheticDataToGeoJSON, haversine, PointFeature, convertCrashDataToGeoJSON } from '../../lib/mapUtils';
 import { useCrashData, UseCrashDataResult } from '../hooks/useCrashData';
 import { CrashData } from '../api/crashes/route';
 import { WeatherData, CrashAnalysisData } from '../../lib/flaskApi';
@@ -49,7 +49,6 @@ interface MapViewProps {
 	crashData?: CrashData[]; // external crash data to use
 	crashDataHook?: UseCrashDataResult; // the crash data hook from main page
 	isMapPickingMode?: boolean; // whether map is in picking mode (prevents popups)
-	useAIMagnitudes?: boolean; // whether to use AI-predicted crash magnitudes
 }
 
 export default function MapView({ 
@@ -64,8 +63,7 @@ export default function MapView({
 	useRealCrashData = true,
 	crashData = [],
 	crashDataHook,
-	isMapPickingMode = false,
-	useAIMagnitudes = true // Default to true to use AI predictions
+	isMapPickingMode = false
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -92,16 +90,11 @@ export default function MapView({
 			console.log('Converting crash data to GeoJSON...');
 			
 			const processData = async () => {
-				setIsLoadingAIPredictions(useAIMagnitudes);
+				setIsLoadingAIPredictions(false); // No AI predictions anymore
 				
 				let geoJSONData: GeoJSON.FeatureCollection;
-				if (useAIMagnitudes) {
-					console.log('🤖 Using AI-enhanced crash data conversion...');
-					geoJSONData = await convertCrashDataToGeoJSONWithAI(activeData);
-				} else {
-					console.log('📊 Using standard crash data conversion...');
-					geoJSONData = convertCrashDataToGeoJSON(activeData);
-				}
+				console.log(`🗺️ Processing crash data: traditional mode`);
+				geoJSONData = convertCrashDataToGeoJSON(activeData);
 				
 				dcDataRef.current = geoJSONData;
 				setIsLoadingAIPredictions(false);
@@ -120,7 +113,7 @@ export default function MapView({
 			
 			processData().catch(console.error);
 		}
-	}, [crashData, crashDataHook, useRealCrashData, useAIMagnitudes]);
+	}, [crashData, crashDataHook, useRealCrashData]);
 
 	useEffect(() => {
 		const el = containerRef.current;
@@ -203,24 +196,13 @@ export default function MapView({
 		const initializeData = async () => {
 			if (useRealCrashData && activeData.length > 0) {
 				console.log('Using real crash data');
-				if (useAIMagnitudes) {
-					setIsLoadingAIPredictions(true);
-					console.log('🤖 Using AI-enhanced real crash data...');
-					dcDataRef.current = await convertCrashDataToGeoJSONWithAI(activeData);
-					setIsLoadingAIPredictions(false);
-				} else {
-					dcDataRef.current = convertCrashDataToGeoJSON(activeData);
-				}
+				setIsLoadingAIPredictions(false);
+				console.log(`🗺️ Processing real crash data: traditional mode`);
+				dcDataRef.current = convertCrashDataToGeoJSON(activeData);
+				setIsLoadingAIPredictions(false);
 			} else if (!useRealCrashData) {
 				console.log('Using synthetic data');
-				if (useAIMagnitudes) {
-					setIsLoadingAIPredictions(true);
-					console.log('🤖 Using AI-enhanced synthetic data...');
-					dcDataRef.current = await generateDCPointsWithAI(900);
-					setIsLoadingAIPredictions(false);
-				} else {
-					dcDataRef.current = generateDCPoints(900);
-				}
+				dcDataRef.current = convertSyntheticDataToGeoJSON(38.9072, -77.0369, 900);
 			} else {
 				console.log('No data available yet, using empty data');
 				dcDataRef.current = { type: 'FeatureCollection' as const, features: [] };

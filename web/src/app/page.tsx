@@ -18,7 +18,6 @@ export default function Home() {
 	const [heatRadius, setHeatRadius] = useState(16);
 	const [heatIntensity, setHeatIntensity] = useState(1);
 	const [gradientRoutes, setGradientRoutes] = useState(true);
-	const [useAIMagnitudes, setUseAIMagnitudes] = useState(true); // Default to true since roadcast API is reliable
 
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
@@ -67,8 +66,6 @@ export default function Home() {
 					onChangeIntensity={(v) => setHeatIntensity(v)}
 					gradientRoutes={gradientRoutes}
 					onToggleGradientRoutes={(v) => setGradientRoutes(v)}
-					useAIMagnitudes={useAIMagnitudes}
-					onToggleAIMagnitudes={(v) => setUseAIMagnitudes(v)}
 					crashDataHook={crashDataHook}
 				/>
 
@@ -82,7 +79,6 @@ export default function Home() {
 					crashData={crashDataHook.data}
 					crashDataHook={crashDataHook}
 					isMapPickingMode={isMapPickingMode}
-					useAIMagnitudes={useAIMagnitudes}
 					onMapReady={(m) => { mapRef.current = m; }}
 					onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
 				/>

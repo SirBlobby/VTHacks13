@@ -1,4 +1,4 @@
-const FLASK_API_BASE = 'http://127.0.0.1:5001';
+const FLASK_API_BASE = 'https://llm.sirblob.co';
 
 export interface WeatherData {
   temperature: number;
@@ -20,6 +20,33 @@ export interface CrashAnalysisData {
   };
   recommendations: string[];
   safetyAnalysis?: string;
+}
+
+export interface SafeRouteData {
+  success: boolean;
+  start_coordinates: { lat: number; lon: number };
+  end_coordinates: { lat: number; lon: number };
+  recommended_route: {
+    coordinates: [number, number][];
+    distance_km: number;
+    duration_min: number;
+    geometry?: any; // GeoJSON for Mapbox
+    safety_score: number;
+    crashes_nearby: number;
+    max_danger_score: number;
+  };
+  safety_analysis: string;
+  weather_summary?: string;
+  route_comparison?: any;
+  alternative_routes: Array<{
+    route_id: string;
+    coordinates: [number, number][];
+    distance_km: number;
+    duration_min: number;
+    geometry?: any;
+    safety_score: number;
+    crashes_nearby: number;
+  }>;
 }
 
 export const fetchWeatherData = async (lat: number, lng: number): Promise<WeatherData> => {
@@ -48,6 +75,38 @@ export const fetchCrashAnalysis = async (lat: number, lng: number): Promise<Cras
 
   const data = await response.json();
   return transformCrashAnalysis(data);
+};
+
+export const fetchSafeRoute = async (
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number
+): Promise<SafeRouteData> => {
+  const response = await fetch(`${FLASK_API_BASE}/api/find-safe-route`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      start_lat: startLat,
+      start_lon: startLon,
+      end_lat: endLat,
+      end_lon: endLon,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch safe route');
+  }
+
+  const data = await response.json();
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Unknown error occurred');
+  }
+
+  return data;
 };
 
 // Transform Flask weather API response to our WeatherData interface
@@ -86,7 +145,7 @@ const transformWeatherData = (apiResponse: any): WeatherData => {
 const transformCrashAnalysis = (apiResponse: any): CrashAnalysisData => {
   const data = apiResponse;
   
-  // Extract risk level from safety analysis text
+  // Extract risk level from safety analysis text with multiple fallback strategies
   let riskLevel = 'unknown';
   let recommendations: string[] = [];
   
@@ -94,10 +153,11 @@ const transformCrashAnalysis = (apiResponse: any): CrashAnalysisData => {
     const safetyText = data.safety_analysis;
     const safetyTextLower = safetyText.toLowerCase();
     
-    // Look for danger level assessment (now without markdown formatting)
+    // Strategy 1: Look for explicit danger level assessment
     const dangerLevelMatch = safetyText.match(/danger level assessment[:\s]*([^.\n]+)/i);
     if (dangerLevelMatch) {
       const level = dangerLevelMatch[1].trim().toLowerCase();
+      console.log('🎯 Found danger level assessment:', level);
       if (level.includes('very high') || level.includes('extreme')) {
         riskLevel = 'high';
       } else if (level.includes('high')) {
@@ -107,21 +167,48 @@ const transformCrashAnalysis = (apiResponse: any): CrashAnalysisData => {
       } else if (level.includes('low')) {
         riskLevel = 'low';
       }
-    } else {
-      // Fallback to searching for risk indicators in the text
-      if (safetyTextLower.includes('very high') || safetyTextLower.includes('extremely dangerous')) {
-        riskLevel = 'high';
-      } else if (safetyTextLower.includes('high risk') || safetyTextLower.includes('very dangerous')) {
-        riskLevel = 'high';
-      } else if (safetyTextLower.includes('moderate risk') || safetyTextLower.includes('medium risk')) {
-        riskLevel = 'medium';
-      } else if (safetyTextLower.includes('low risk') || safetyTextLower.includes('relatively safe')) {
-        riskLevel = 'low';
+    }
+    
+    // Strategy 2: Look for risk level patterns if first strategy failed
+    if (riskLevel === 'unknown') {
+      const riskPatterns = [
+        { keywords: ['very high risk', 'extremely dangerous', 'very dangerous', 'extreme danger'], level: 'high' },
+        { keywords: ['high risk', 'high danger', 'dangerous area', 'significant risk'], level: 'high' },
+        { keywords: ['moderate risk', 'medium risk', 'moderate danger', 'moderately dangerous'], level: 'medium' },
+        { keywords: ['low risk', 'relatively safe', 'low danger', 'minimal risk'], level: 'low' }
+      ];
+      
+      for (const pattern of riskPatterns) {
+        if (pattern.keywords.some(keyword => safetyTextLower.includes(keyword))) {
+          riskLevel = pattern.level;
+          console.log('🎯 Found risk pattern:', pattern.keywords[0], '→', pattern.level);
+          break;
+        }
       }
     }
     
-    // Extract recommendations from safety analysis (now without markdown)
-    const recommendationsMatch = safetyText.match(/specific recommendations[^:]*:([\s\S]*?)(?=\n\n|\d+\.|$)/i);
+    // Strategy 3: Fallback to crash data severity if text parsing fails
+    if (riskLevel === 'unknown' && data.crash_summary) {
+      const summary = data.crash_summary;
+      const totalCrashes = summary.total_crashes || 0;
+      const totalCasualties = summary.total_casualties || 0;
+      
+      if (totalCasualties > 10 || totalCrashes > 20) {
+        riskLevel = 'high';
+        console.log('🎯 Fallback: High risk based on casualties/crashes', { totalCasualties, totalCrashes });
+      } else if (totalCasualties > 3 || totalCrashes > 8) {
+        riskLevel = 'medium';
+        console.log('🎯 Fallback: Medium risk based on casualties/crashes', { totalCasualties, totalCrashes });
+      } else if (totalCrashes > 0) {
+        riskLevel = 'low';
+        console.log('🎯 Fallback: Low risk based on crashes', { totalCrashes });
+      }
+    }
+    
+    console.log('📊 Final risk level determination:', riskLevel);
+    
+    // Extract recommendations from safety analysis (more flexible approach)
+    const recommendationsMatch = safetyText.match(/(?:specific recommendations|recommendations)[^:]*:([\s\S]*?)(?=\n\n|\d+\.|$)/i);
     if (recommendationsMatch) {
       const recommendationsText = recommendationsMatch[1];
       // Split by lines and filter for meaningful recommendations

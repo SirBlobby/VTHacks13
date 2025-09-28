@@ -4,7 +4,8 @@ import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import GeocodeInput from './GeocodeInput';
 import { useCrashData } from '../hooks/useCrashData';
-import { calculateRouteCrashDensity, createRouteGradientStops } from '../lib/mapUtils';
+import { calculateRouteCrashDensity, createRouteGradientStops } from '../../lib/mapUtils';
+import { fetchSafeRoute, type SafeRouteData } from '../../lib/flaskApi';
 
 interface Props {
   mapRef: React.MutableRefObject<mapboxgl.Map | null>;
@@ -13,6 +14,8 @@ interface Props {
   gradientRoutes?: boolean; // whether to use gradient routes or solid routes
   mapStyleChoice?: 'dark' | 'streets'; // map style for panel theming
 }
+
+// Routing now uses geocoder-only selection inside the sidebar (no manual coordinate parsing)
 
 // Routing now uses geocoder-only selection inside the sidebar (no manual coordinate parsing)
 
@@ -32,6 +35,10 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
   const [isDestMapPicking, setIsDestMapPicking] = useState(false);
   const [routes, setRoutes] = useState<any[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+  // Safe route functionality
+  const [safeRouteData, setSafeRouteData] = useState<SafeRouteData | null>(null);
+  const [safeRouteLoading, setSafeRouteLoading] = useState(false);
+  const [showSafeRoute, setShowSafeRoute] = useState(false);
   // custom geocoder inputs + suggestions (we implement our own UI instead of the library)
   const originQueryRef = useRef<string>("");
   const destQueryRef = useRef<string>("");
@@ -44,6 +51,26 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
   const originInputRef = useRef<HTMLDivElement | null>(null);
   const destInputRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
+
+  // Helper function to normalize safety score to 0-10 scale
+  const normalizeSafetyScore = (rawScore: number): number => {
+    console.log('Raw safety score:', rawScore); // Debug log
+    
+    // Based on the safety score calculation:
+    // - 0 = no crashes (perfectly safe) 
+    // - 1-5 = low danger
+    // - 5-20 = moderate danger  
+    // - 20+ = high danger
+    
+    if (rawScore === 0) return 10; // Perfect safety
+    
+    // Use logarithmic scale to handle wide range of scores
+    // Map common ranges: 0.1->9.5, 1->8, 5->6, 20->3, 50->1, 100+->0
+    const safetyScore = Math.max(0, 10 - Math.log10(rawScore + 1) * 2.5);
+    
+    console.log('Normalized safety score:', safetyScore); // Debug log
+    return Math.max(0, Math.min(10, safetyScore));
+  };
 
   useEffect(() => {
     return () => { mountedRef.current = false; };
@@ -495,6 +522,75 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
     // Clear multiple routes state
     setRoutes([]);
     setSelectedRouteIndex(0);
+    // Clear safe route state
+    setSafeRouteData(null);
+    setShowSafeRoute(false);
+    // Remove safe route from map if it exists
+    if (map) {
+      try {
+        if (map.getLayer("safe-route-line")) map.removeLayer("safe-route-line");
+        if (map.getSource("safe-route")) map.removeSource("safe-route");
+      } catch (e) {}
+    }
+  }
+
+  // Safe route functionality
+  async function handleGetSafeRoute() {
+    const map = mapRef.current;
+    if (!map) return;
+    const o = originCoord;
+    const d = destCoord;
+    if (!o || !d) {
+      alert('Please select both origin and destination using the location search boxes.');
+      return;
+    }
+
+    setSafeRouteLoading(true);
+    try {
+      const safeRouteResult = await fetchSafeRoute(o[1], o[0], d[1], d[0]); // API expects lat, lon
+      console.log('Safe route result:', safeRouteResult);
+      setSafeRouteData(safeRouteResult);
+      setShowSafeRoute(true);
+
+      // If we have a recommended route, display it
+      if (safeRouteResult.recommended_route?.geometry?.coordinates) {
+        const safeRouteGeo: GeoJSON.Feature<GeoJSON.Geometry> = {
+          type: "Feature",
+          properties: { type: "safe-route" },
+          geometry: {
+            type: "LineString",
+            coordinates: safeRouteResult.recommended_route.geometry.coordinates
+          }
+        };
+
+        // Add safe route to map
+        if (!map.getSource("safe-route")) {
+          map.addSource("safe-route", { type: "geojson", data: safeRouteGeo });
+        } else {
+          (map.getSource("safe-route") as mapboxgl.GeoJSONSource).setData(safeRouteGeo);
+        }
+
+        if (!map.getLayer("safe-route-line")) {
+          map.addLayer({
+            id: "safe-route-line",
+            type: "line",
+            source: "safe-route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { 
+              "line-color": "#10b981", // green color for safe route
+              "line-width": 6, 
+              "line-opacity": 0.8,
+              "line-dasharray": [1, 1] // subtle dashed line to differentiate
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching safe route:', error);
+      alert('Failed to fetch safe route. Please try again.');
+    } finally {
+      setSafeRouteLoading(false);
+    }
   }
 
   // re-add layers after style change
@@ -683,8 +779,9 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
             </div>
 
             <div className="flex gap-2 mt-2">
-              <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-4 py-2 rounded-lg text-white shadow-md disabled:opacity-60 transition-colors" style={{ backgroundColor: 'var(--panel-dark)' }}>{loading ? 'Routing…' : 'Get Route'}</button>
-              <button onClick={handleClear} className="px-4 py-2 rounded-lg border text-sm text-[#d1d5db] transition-colors" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }} onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-light)'} onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-medium)'}>Clear</button>
+              <button onClick={handleGetRoute} disabled={loading} className="flex-1 px-3 py-2 rounded-lg text-white shadow-md disabled:opacity-60 transition-colors text-sm" style={{ backgroundColor: 'var(--panel-dark)' }}>{loading ? 'Routing…' : 'Get Route'}</button>
+              <button onClick={handleGetSafeRoute} disabled={safeRouteLoading} className="flex-1 px-3 py-2 rounded-lg text-white shadow-md disabled:opacity-60 transition-colors text-sm" style={{ backgroundColor: '#10b981' }}>{safeRouteLoading ? 'AI Routing…' : 'Safe Route'}</button>
+              <button onClick={handleClear} className="px-3 py-2 rounded-lg border text-sm text-[#d1d5db] transition-colors" style={{ backgroundColor: 'var(--panel-medium)', borderColor: 'var(--panel-light)' }} onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-light)'} onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = 'var(--panel-medium)'}>Clear</button>
             </div>
 
             {/* Route Options */}
@@ -784,6 +881,66 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
                     Green dashed line shows safer route
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Safe Route Analysis */}
+            {showSafeRoute && safeRouteData && (
+              <div className="mt-4 p-3 rounded-lg border border-[#10b981]" style={{ backgroundColor: 'var(--panel-dark)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-4 h-4 text-[#10b981]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  <span className="text-sm font-medium text-[#ecfdf5]">AI Safe Route Analysis</span>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="text-xs text-[#a7f3d0]">
+                    <div className="flex justify-between">
+                      <span>Safety Score:</span>
+                      <span className={`font-medium ${
+                        normalizeSafetyScore(safeRouteData.recommended_route.safety_score) >= 7 
+                          ? 'text-green-400' 
+                          : normalizeSafetyScore(safeRouteData.recommended_route.safety_score) >= 4 
+                            ? 'text-yellow-400' 
+                            : 'text-red-400'
+                      }`}>
+                        {normalizeSafetyScore(safeRouteData.recommended_route.safety_score).toFixed(1)}/10
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Distance:</span>
+                      <span className="font-medium">{safeRouteData.recommended_route.distance_km.toFixed(1)} km</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Duration:</span>
+                      <span className="font-medium">{Math.round(safeRouteData.recommended_route.duration_min)} min</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Crashes Nearby:</span>
+                      <span className="font-medium">{safeRouteData.recommended_route.crashes_nearby}</span>
+                    </div>
+                  </div>
+                  
+                  {safeRouteData.safety_analysis && (
+                    <div className="text-xs text-[#a7f3d0] border-t border-[#065f46] pt-2">
+                      <div className="font-medium mb-1">Safety Analysis:</div>
+                      <div className="text-[#6ee7b7]">{safeRouteData.safety_analysis}</div>
+                    </div>
+                  )}
+                  
+                  {safeRouteData.weather_summary && (
+                    <div className="text-xs text-[#a7f3d0] border-t border-[#065f46] pt-2">
+                      <div className="font-medium mb-1">Weather Conditions:</div>
+                      <div className="text-[#6ee7b7]">{safeRouteData.weather_summary}</div>
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-xs text-[#a7f3d0] flex items-center">
+                    <span className="inline-block w-3 h-0.5 bg-[#10b981] mr-2"></span>
+                    Green line shows AI-recommended safe route
+                  </div>
+                </div>
               </div>
             )}
 
