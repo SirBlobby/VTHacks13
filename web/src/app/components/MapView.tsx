@@ -41,6 +41,7 @@ interface MapViewProps {
 	onGeocoderResult?: (lngLat: [number, number]) => void;
 	useRealCrashData?: boolean; // whether to use real crash data or synthetic data
 	crashData?: CrashData[]; // external crash data to use
+	isMapPickingMode?: boolean; // whether map is in picking mode (prevents popups)
 }
 
 export default function MapView({ 
@@ -53,7 +54,8 @@ export default function MapView({
 	onPopupCreate, 
 	onGeocoderResult, 
 	useRealCrashData = true,
-	crashData = []
+	crashData = [],
+	isMapPickingMode = false
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -88,7 +90,7 @@ export default function MapView({
 						// Add layers if they don't exist
 						if (!map.getLayer('dc-heat')) {
 							map.addLayer({
-								id: 'dc-heat', type: 'heatmap', source: 'dc-quakes', maxzoom: 15,
+								id: 'dc-heat', type: 'heatmap', source: 'dc-quakes',
 								paint: {
 									'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 6, 1],
 									'heatmap-intensity': heatIntensity,
@@ -317,7 +319,7 @@ export default function MapView({
 
 			if (!map.getLayer('dc-heat')) {
 				map.addLayer({
-					id: 'dc-heat', type: 'heatmap', source: 'dc-quakes', maxzoom: 15,
+					id: 'dc-heat', type: 'heatmap', source: 'dc-quakes',
 					paint: {
 						'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 6, 1],
 						'heatmap-intensity': heatIntensity,
@@ -403,7 +405,7 @@ Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + 
 Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 				}
 				
-				if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 			});
 
 			map.on('click', 'dc-heat', async (e) => {
@@ -421,7 +423,7 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 					    coords[0] === 0 || coords[1] === 0) {
 						console.warn('Invalid coordinates for heat map click:', coords);
 						const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
-						if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
+						if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
 						return;
 					}
 					
@@ -439,10 +441,10 @@ Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + 
 Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 					}
 					
-					if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 				} else {
 					const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
-					if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
 				}
 			});
 
@@ -478,7 +480,7 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 					detailedText = `Detailed Analysis - ${crashData.address}`;
 				}
 				
-				if (onPopupCreate) onPopupCreate({ 
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 					lngLat: coords, 
 					crashData,
 					text: detailedText, 
@@ -495,7 +497,7 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 				// Get comprehensive stats for the clicked location
 				const stats = await computeNearbyStats(coords, 500); // 500m radius
 				
-				if (onPopupCreate) onPopupCreate({ 
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 					lngLat: coords, 
 					text: 'Area Crash Analysis', 
 					stats 
@@ -516,13 +518,13 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 				const stats = await computeNearbyStats(coords, 400); // 400m radius for general clicks
 				
 				if (stats.count > 0) {
-					if (onPopupCreate) onPopupCreate({ 
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 						lngLat: coords, 
 						text: 'Location Analysis', 
 						stats 
 					});
 				} else {
-					if (onPopupCreate) onPopupCreate({ 
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 						lngLat: coords, 
 						text: 'No crashes found in this area', 
 						stats: { count: 0, radiusMeters: 800 }
