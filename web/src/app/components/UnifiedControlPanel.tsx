@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UseCrashDataResult } from '../hooks/useCrashData';
+import { getCircuitBreakerStatus } from '../../lib/crashMagnitudeApi';
 
 interface UnifiedControlPanelProps {
 	// Map controls props
@@ -17,6 +18,8 @@ interface UnifiedControlPanelProps {
 	onChangeIntensity: (v: number) => void;
 	gradientRoutes: boolean;
 	onToggleGradientRoutes: (v: boolean) => void;
+	useAIMagnitudes: boolean;
+	onToggleAIMagnitudes: (v: boolean) => void;
 	
 	// Crash data controls props
 	crashDataHook: UseCrashDataResult;
@@ -36,6 +39,8 @@ export default function UnifiedControlPanel({
 	onChangeIntensity,
 	gradientRoutes,
 	onToggleGradientRoutes,
+	useAIMagnitudes,
+	onToggleAIMagnitudes,
 	crashDataHook,
 	onDataLoaded
 }: UnifiedControlPanelProps) {
@@ -59,6 +64,7 @@ export default function UnifiedControlPanel({
 	const [isMapControlsSectionOpen, setIsMapControlsSectionOpen] = useState(getInitialMapControlsState);
 	const [isCrashDataSectionOpen, setIsCrashDataSectionOpen] = useState(getInitialCrashDataState);
 	const [isHydrated, setIsHydrated] = useState(false);
+	const [aiApiStatus, setAiApiStatus] = useState<{ isOpen: boolean; failures: number }>({ isOpen: false, failures: 0 });
 	
 	// Load localStorage values after hydration
 	useEffect(() => {
@@ -77,7 +83,26 @@ export default function UnifiedControlPanel({
 		}
 		
 		setIsHydrated(true);
-	}, []);	// Crash data state
+	}, []);
+	
+	// Check AI API status when AI magnitudes are enabled
+	useEffect(() => {
+		if (useAIMagnitudes) {
+			const checkApiStatus = () => {
+				const status = getCircuitBreakerStatus();
+				setAiApiStatus(status);
+			};
+			
+			// Check immediately
+			checkApiStatus();
+			
+			// Check every 30 seconds
+			const interval = setInterval(checkApiStatus, 30000);
+			return () => clearInterval(interval);
+		}
+	}, [useAIMagnitudes]);
+	
+	// Crash data state
 	const { data, loading, error, pagination, loadMore, refresh, yearFilter, setYearFilter } = crashDataHook;
 	const [currentYear, setCurrentYear] = useState('2024'); // Default to prevent hydration mismatch
 	const [selectedYear, setSelectedYear] = useState<string>('2024'); // Default value
@@ -235,6 +260,29 @@ export default function UnifiedControlPanel({
 									<label className="mc-label">Gradient Routes</label>
 									<input type="checkbox" checked={gradientRoutes} onChange={(e) => onToggleGradientRoutes(e.target.checked)} />
 								</div>
+
+								<div className="mc-row">
+									<label className="mc-label">
+										AI Magnitudes 🤖
+										<span style={{
+											fontSize: 8,
+											padding: '2px 6px',
+											borderRadius: 4,
+											marginLeft: 8,
+											backgroundColor: aiApiStatus.isOpen ? '#d4edda' : '#f8d7da',
+											color: aiApiStatus.isOpen ? '#155724' : '#721c24'
+										}}>
+											{aiApiStatus.isOpen ? 'Available' : `Unavailable (${aiApiStatus.failures} failures)`}
+										</span>
+									</label>
+									<input type="checkbox" checked={useAIMagnitudes} onChange={(e) => onToggleAIMagnitudes(e.target.checked)} />
+								</div>
+								
+								{useAIMagnitudes && (
+									<div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: -4, marginBottom: 8, lineHeight: 1.3 }}>
+										Uses AI to predict crash severity. Falls back to traditional calculation if API unavailable.
+									</div>
+								)}
 
 								<div style={{ marginBottom: 6 }}>
 									<label style={{ display: 'block', fontSize: 12 }}>Radius: {heatRadius}</label>
