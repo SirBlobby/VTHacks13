@@ -294,41 +294,41 @@ def compute_reroute(
 		"grid_shape": (n_lat, n_lon)
 	}
 
-def compute_index(lat: float,
-                  lon: float,
-                  max_risk: float = 10.0,
-                  num_bins: int = 10,
-                  risk_provider: Optional[Callable[[float, float], float]] = None) -> int:
-    """
-    Computes and returns an index based on road risk and accident information.
+# def compute_index(lat: float,
+#                   lon: float,
+#                   max_risk: float = 10.0,
+#                   num_bins: int = 10,
+#                   risk_provider: Optional[Callable[[float, float], float]] = None) -> int:
+#     """
+#     Computes and returns an index based on road risk and accident information.
     
-    Args:
-        lat: Latitude of the location.
-        lon: Longitude of the location.
-        max_risk: Maximum possible road risk score.
-        num_bins: Number of bins to divide the risk range into.
-        reroute_kwargs: Optional dictionary passed to reroute logic.
-        risk_provider: Optional custom risk provider function.
+#     Args:
+#         lat: Latitude of the location.
+#         lon: Longitude of the location.
+#         max_risk: Maximum possible road risk score.
+#         num_bins: Number of bins to divide the risk range into.
+#         reroute_kwargs: Optional dictionary passed to reroute logic.
+#         risk_provider: Optional custom risk provider function.
 
-    Returns:
-        An integer index (1 to num_bins) based on computed road risk.
-    """
-    # If a risk provider is not provided, use a default one
-    if risk_provider is None:
-        risk_provider = lambda lat, lon: get_risk_score(lat, lon)
+#     Returns:
+#         An integer index (1 to num_bins) based on computed road risk.
+#     """
+#     # If a risk provider is not provided, use a default one
+#     if risk_provider is None:
+#         risk_provider = lambda lat, lon: get_risk_score(lat, lon)
 
-    # Fetch road risk score using the provided risk provider
-    road_risk = float(risk_provider(lat, lon))
+#     # Fetch road risk score using the provided risk provider
+#     road_risk = float(risk_provider(lat, lon))
     
-    # Compute the index based on road risk score and the max_risk, num_bins parameters
-    # The formula will divide the risk score into `num_bins` bins
-    # The index will be a number between 1 and num_bins based on the risk score
+#     # Compute the index based on road risk score and the max_risk, num_bins parameters
+#     # The formula will divide the risk score into `num_bins` bins
+#     # The index will be a number between 1 and num_bins based on the risk score
 
-    # Normalize the risk score to be between 0 and max_risk
-    normalized_risk = min(road_risk, max_risk) / max_risk
+#     # Normalize the risk score to be between 0 and max_risk
+#     normalized_risk = min(road_risk, max_risk) / max_risk
 
-    # Compute the index based on the normalized risk score
-    index = int(normalized_risk * num_bins)
+#     # Compute the index based on the normalized risk score
+#     index = int(normalized_risk * num_bins)
 
-    # Ensure the index is within the expected range of 1 to num_bins
-    return max(1, min(index + 1, num_bins))  # Adding 1 because index is 0-based
+#     # Ensure the index is within the expected range of 1 to num_bins
+#     return max(1, min(index + 1, num_bins))  # Adding 1 because index is 0-based

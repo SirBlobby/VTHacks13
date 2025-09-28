@@ -1,6 +1,7 @@
 import os
 import time
 import torch
+import json
 from torch import nn, optim
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
@@ -52,18 +53,106 @@ def train(dataset_root, epochs=3, batch_size=16, lr=1e-3, device=None, num_class
             print(f'Saved preprocess meta to {meta_path}')
         except Exception:
             pass
+
+        # ensure model_num_classes has a defined value for later use
+        model_num_classes = None
+
+        # ---- new: generate kmeans labels when requested ----
+        if generate_labels and label_method == 'kmeans':
+            try:
+                import numpy as _np
+                # ensure features is numpy 2D array
+                X = dataset.features
+                if hasattr(X, 'toarray'):
+                    X = X.toarray()
+                X = _np.asarray(X, dtype=float)
+
+                # basic preprocessing: fill NaN and scale (mean/std)
+                nan_mask = _np.isnan(X)
+                if nan_mask.any():
+                    col_means = _np.nanmean(X, axis=0)
+                    inds = _np.where(nan_mask)
+                    X[inds] = _np.take(col_means, inds[1])
+                # standardize
+                col_means = X.mean(axis=0)
+                col_stds = X.std(axis=0)
+                col_stds[col_stds == 0] = 1.0
+                Xs = (X - col_means) / col_stds
+
+                # use sklearn KMeans
+                try:
+                    from sklearn.cluster import KMeans
+                except Exception as e:
+                    raise RuntimeError("sklearn is required for kmeans label generation: " + str(e))
+
+                n_clusters = 10  # produce 1..10 labels as required
+                kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
+                cluster_ids = kmeans.fit_predict(Xs)
+
+                # compute a simple score per cluster to sort them (e.g., center mean)
+                centers = kmeans.cluster_centers_
+                center_scores = centers.mean(axis=1)
+                # sort cluster ids by score -> map to rank 1..n_clusters (1 = lowest score)
+                order = _np.argsort(center_scores)
+                rank_map = {int(c): (int(_np.where(order == c)[0][0]) + 1) for c in range(len(order))}
+
+                # assign labels 1..10 based on cluster rank
+                assigned_labels_1to10 = [_np.float64(rank_map[int(cid)]) for cid in cluster_ids]
+
+                # for training (classification) convert to 0..9 integer labels
+                assigned_labels_zero_based = _np.array([int(lbl) - 1 for lbl in assigned_labels_1to10], dtype=int)
+
+                # attach to dataset (CSVDataset consumers expect .labels possibly)
+                try:
+                    import torch as _torch
+                    dataset.labels = _torch.from_numpy(assigned_labels_zero_based).long()
+                except Exception:
+                    # fallback to numpy attribute
+                    dataset.labels = assigned_labels_zero_based
+
+                # persist label_info / assignments
+                label_info = {
+                    "generated": True,
+                    "label_method": "kmeans",
+                    "n_clusters": n_clusters,
+                }
+                try:
+                    # save assignments if small enough
+                    if len(assigned_labels_1to10) <= 100000:
+                        label_info["assignments"] = [float(x) for x in assigned_labels_1to10]
+                    else:
+                        arr_path = os.path.join(output_dir, "label_assignments.npz")
+                        _np.savez_compressed(arr_path, assignments=_np.array(assigned_labels_1to10))
+                        label_info["assignments_file"] = os.path.basename(arr_path)
+                    with open(os.path.join(output_dir, "label_info.json"), "w") as f:
+                        json.dump(label_info, f)
+                except Exception:
+                    pass
+                # update model_num_classes for training (10 clusters)
+                model_num_classes = n_clusters
+                print(f"Generated kmeans labels with {n_clusters} clusters; saved label_info.json")
+            except Exception as e:
+                print("KMeans label generation failed:", e)
+                # fall back to prior logic (md5 or provided labels)
+        # ---- end kmeans generation ----
+
         if model_type == 'cnn':
             raise ValueError('CSV dataset should use model_type="mlp"')
-        # if we generated labels, infer the actual number of classes from the dataset labels
-        if generate_labels and hasattr(dataset, 'labels'):
-            try:
-                model_num_classes = int(dataset.labels.max().item()) + 1
-            except Exception:
-                model_num_classes = n_buckets
-        else:
-            model_num_classes = n_buckets if generate_labels else num_classes
+
+        # determine model_num_classes if not set by kmeans above
+        if model_num_classes is None:
+            # if we generated labels (non-kmeans) and dataset provides labels, infer number of classes
+            if generate_labels and hasattr(dataset, 'labels') and label_method != 'kmeans':
+                try:
+                    model_num_classes = int(dataset.labels.max().item()) + 1
+                except Exception:
+                    model_num_classes = n_buckets
+            else:
+                # default behavior
+                model_num_classes = n_buckets if generate_labels else num_classes
+
         # If labels were generated, save label metadata + assignments (if not huge)
-        if generate_labels:
+        if generate_labels and label_method != 'kmeans':
             try:
                 label_info = {
                     "generated": True,
@@ -86,7 +175,6 @@ def train(dataset_root, epochs=3, batch_size=16, lr=1e-3, device=None, num_class
                     except Exception:
                         pass
                 with open(os.path.join(output_dir, "label_info.json"), "w") as f:
-                    import json
                     json.dump(label_info, f)
                 print(f"Saved label_info to {os.path.join(output_dir, 'label_info.json')}")
             except Exception:
@@ -170,7 +258,6 @@ def train(dataset_root, epochs=3, batch_size=16, lr=1e-3, device=None, num_class
 
 if __name__ == '__main__':
     import argparse
-    import json
     parser = argparse.ArgumentParser()
     parser.add_argument('data_root')
     parser.add_argument('--epochs', type=int, default=3)
@@ -209,4 +296,45 @@ if __name__ == '__main__':
         with open(os.path.join(args.output_dir, "label_info.json"), "w") as f:
             json.dump(label_info, f)
     train(data_root, epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, model_type=args.model_type, csv_label=args.csv_label, generate_labels=args.generate_labels, n_buckets=args.n_buckets, label_method=args.label_method, label_store=args.label_store, feature_engineer=args.feature_engineer, lat_lon_bins=args.lat_lon_bins, nrows=nrows, seed=args.seed, hidden_dims=hidden_dims, weight_decay=args.weight_decay, output_dir=args.output_dir)
+
+# ---------------- new helper ----------------
+def compute_index(model, feature_vector):
+    """
+    Run model on a single feature_vector and return the model-provided index as float.
+    - If model is a classifier (outputs logits), returns argmax + 1.0 (so labels 1..C).
+    - If model returns a single scalar regression, returns that scalar as float.
+    feature_vector may be numpy array or torch tensor (1D or 2D single sample).
+    """
+    try:
+        import torch
+        model.eval()
+        if not isinstance(feature_vector, torch.Tensor):
+            fv = torch.tensor(feature_vector, dtype=torch.float32)
+        else:
+            fv = feature_vector.float()
+        # ensure batch dim
+        if fv.dim() == 1:
+            fv = fv.unsqueeze(0)
+        with torch.no_grad():
+            out = model(fv)
+        # if tensor output
+        if hasattr(out, 'detach'):
+            out_t = out.detach().cpu()
+            if out_t.ndim == 2 and out_t.shape[1] > 1:
+                # classifier logits/probs -> argmax
+                idx = int(out_t.argmax(dim=1).item())
+                return float(idx + 1)
+            elif out_t.numel() == 1:
+                return float(out_t.item())
+            else:
+                # fallback: return first element
+                return float(out_t.flatten()[0].item())
+        else:
+            # not a tensor (unlikely), try float conversion
+            return float(out)
+    except Exception as e:
+        raise RuntimeError("compute_index failed: " + str(e))
+        return float(out)
+    except Exception as e:
+        raise RuntimeError("compute_index failed: " + str(e))
 
