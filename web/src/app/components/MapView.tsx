@@ -14,7 +14,20 @@ export type PopupData = {
 	mag?: number; 
 	text?: string; 
 	crashData?: CrashData;
-	stats?: { count: number; avg?: number; min?: number; max?: number; radiusMeters?: number } 
+	stats?: { 
+		count: number; 
+		avg?: number; 
+		min?: number; 
+		max?: number; 
+		radiusMeters?: number;
+		severityCounts?: {
+			fatal: number;
+			majorInjury: number;
+			minorInjury: number;
+			propertyOnly: number;
+		};
+		crashes?: any[]; // Top 5 nearby crashes
+	} 
 } | null;
 
 interface MapViewProps {
@@ -216,18 +229,74 @@ export default function MapView({
 			dcDataRef.current = { type: 'FeatureCollection' as const, features: [] };
 		}
 
-		const computeNearbyStats = (center: [number, number], radiusMeters = 500) => {
-			const data = dcDataRef.current;
-			if (!data) return { count: 0 };
-			const mags: number[] = [];
-			for (const f of data.features as PointFeature[]) {
-				const coord = f.geometry.coordinates as [number, number];
-				const d = haversine(center, coord);
-				if (d <= radiusMeters) mags.push(f.properties.mag);
+		const computeNearbyStats = async (center: [number, number], radiusMeters = 300) => {
+			try {
+				const [lng, lat] = center;
+				const response = await fetch(`/api/crashes/nearby?lng=${lng}&lat=${lat}&radius=${radiusMeters}&limit=1000`);
+				
+				if (!response.ok) {
+					console.warn('Failed to fetch nearby crash data:', response.status);
+					return { count: 0 };
+				}
+				
+				const data = await response.json();
+				const crashes = data.data || [];
+				
+				// Filter out any null or invalid crash data on client side
+				const validCrashes = crashes.filter((crash: any) => 
+					crash && 
+					crash.id && 
+					typeof crash.latitude === 'number' && 
+					typeof crash.longitude === 'number' &&
+					!isNaN(crash.latitude) && 
+					!isNaN(crash.longitude) &&
+					crash.latitude !== 0 && 
+					crash.longitude !== 0
+				);
+				
+				if (validCrashes.length === 0) {
+					return { count: 0, radiusMeters };
+				}
+				
+				// Calculate severity statistics from MongoDB data
+				const severityValues = validCrashes.map((crash: any) => {
+					// Convert severity to numeric value for stats
+					switch (crash.severity) {
+						case 'Fatal': return 6;
+						case 'Major Injury': return 4;
+						case 'Minor Injury': return 2;
+						case 'Property Damage Only': return 1;
+						default: return 1;
+					}
+				});
+				
+				// Calculate statistics
+				const sum = severityValues.reduce((s: number, x: number) => s + x, 0);
+				const avg = +(sum / severityValues.length).toFixed(2);
+				const min = Math.min(...severityValues);
+				const max = Math.max(...severityValues);
+				
+				// Count by severity type
+				const severityCounts = {
+					fatal: validCrashes.filter((c: any) => c.severity === 'Fatal').length,
+					majorInjury: validCrashes.filter((c: any) => c.severity === 'Major Injury').length,
+					minorInjury: validCrashes.filter((c: any) => c.severity === 'Minor Injury').length,
+					propertyOnly: validCrashes.filter((c: any) => c.severity === 'Property Damage Only').length
+				};
+				
+				return { 
+					count: validCrashes.length, 
+					avg, 
+					min, 
+					max, 
+					radiusMeters,
+					severityCounts,
+					crashes: validCrashes.slice(0, 5) // Include first 5 crashes for detailed info
+				};
+			} catch (error) {
+				console.error('Error computing nearby stats:', error);
+				return { count: 0 };
 			}
-			if (mags.length === 0) return { count: 0 };
-			const sum = mags.reduce((s, x) => s + x, 0);
-			return { count: mags.length, avg: +(sum / mags.length).toFixed(2), min: Math.min(...mags), max: Math.max(...mags), radiusMeters };
 		};
 
 		const addDataAndLayers = () => {
@@ -305,51 +374,74 @@ export default function MapView({
 			// ensure map is fit to DC bounds initially
 			try { map.fitBounds(dcBounds, { padding: 20 }); } catch (e) { /* ignore if fitBounds fails */ }
 
-			map.on('click', 'dc-point', (e) => {
+			map.on('click', 'dc-point', async (e) => {
 				const feature = e.features && e.features[0];
 				if (!feature) return;
+				
 				const coords = (feature.geometry as any).coordinates.slice() as [number, number];
+				
+				// Validate coordinates
+				if (!coords || coords.length !== 2 || 
+				    typeof coords[0] !== 'number' || typeof coords[1] !== 'number' ||
+				    isNaN(coords[0]) || isNaN(coords[1]) || 
+				    coords[0] === 0 || coords[1] === 0) {
+					console.warn('Invalid coordinates for crash point:', coords);
+					return;
+				}
+				
 				const mag = feature.properties ? feature.properties.mag : undefined;
 				const crashData = feature.properties ? feature.properties.crashData : undefined;
-				const stats = computeNearbyStats(coords, 500);
+				const stats = await computeNearbyStats(coords, 300);
 				
 				let text = `Severity: ${mag ?? 'N/A'}`;
-				if (crashData) {
+				if (crashData && crashData.address) {
 					text = `Crash Report
-Date: ${new Date(crashData.reportDate).toLocaleDateString()}
+Date: ${crashData.reportDate ? new Date(crashData.reportDate).toLocaleDateString() : 'Unknown'}
 Address: ${crashData.address}
-Vehicles: ${crashData.totalVehicles} | Pedestrians: ${crashData.totalPedestrians} | Bicycles: ${crashData.totalBicycles}
-Fatalities: ${crashData.fatalDriver + crashData.fatalPedestrian + crashData.fatalBicyclist}
-Major Injuries: ${crashData.majorInjuriesDriver + crashData.majorInjuriesPedestrian + crashData.majorInjuriesBicyclist}`;
+Vehicles: ${crashData.totalVehicles || 0} | Pedestrians: ${crashData.totalPedestrians || 0} | Bicycles: ${crashData.totalBicycles || 0}
+Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + (crashData.fatalBicyclist || 0)}
+Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 				}
 				
 				if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 			});
 
-			map.on('click', 'dc-heat', (e) => {
+			map.on('click', 'dc-heat', async (e) => {
 				const p = e.point;
 				const bbox = [[p.x - 6, p.y - 6], [p.x + 6, p.y + 6]] as [mapboxgl.PointLike, mapboxgl.PointLike];
 				const nearby = map.queryRenderedFeatures(bbox, { layers: ['dc-point'] });
 				if (nearby && nearby.length > 0) {
 					const f = nearby[0];
 					const coords = (f.geometry as any).coordinates.slice() as [number, number];
+					
+					// Validate coordinates
+					if (!coords || coords.length !== 2 || 
+					    typeof coords[0] !== 'number' || typeof coords[1] !== 'number' ||
+					    isNaN(coords[0]) || isNaN(coords[1]) || 
+					    coords[0] === 0 || coords[1] === 0) {
+						console.warn('Invalid coordinates for heat map click:', coords);
+						const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
+						if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
+						return;
+					}
+					
 					const mag = f.properties ? f.properties.mag : undefined;
 					const crashData = f.properties ? f.properties.crashData : undefined;
-					const stats = computeNearbyStats(coords, 500);
+					const stats = await computeNearbyStats(coords, 300);
 					
 					let text = `Severity: ${mag ?? 'N/A'}`;
-					if (crashData) {
+					if (crashData && crashData.address) {
 						text = `Crash Report
-Date: ${new Date(crashData.reportDate).toLocaleDateString()}
+Date: ${crashData.reportDate ? new Date(crashData.reportDate).toLocaleDateString() : 'Unknown'}
 Address: ${crashData.address}
-Vehicles: ${crashData.totalVehicles} | Pedestrians: ${crashData.totalPedestrians} | Bicycles: ${crashData.totalBicycles}
-Fatalities: ${crashData.fatalDriver + crashData.fatalPedestrian + crashData.fatalBicyclist}
-Major Injuries: ${crashData.majorInjuriesDriver + crashData.majorInjuriesPedestrian + crashData.majorInjuriesBicyclist}`;
+Vehicles: ${crashData.totalVehicles || 0} | Pedestrians: ${crashData.totalPedestrians || 0} | Bicycles: ${crashData.totalBicycles || 0}
+Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + (crashData.fatalBicyclist || 0)}
+Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 					}
 					
 					if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 				} else {
-					const stats = computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 500);
+					const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
 					if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
 				}
 			});
@@ -358,6 +450,85 @@ Major Injuries: ${crashData.majorInjuriesDriver + crashData.majorInjuriesPedestr
 			map.on('mouseleave', 'dc-point', () => map.getCanvas().style.cursor = '');
 			map.on('mouseenter', 'dc-heat', () => map.getCanvas().style.cursor = 'pointer');
 			map.on('mouseleave', 'dc-heat', () => map.getCanvas().style.cursor = '');
+
+			// Double-click handlers for enhanced nearby statistics
+			map.on('dblclick', 'dc-point', async (e) => {
+				e.preventDefault(); // Prevent default map zoom behavior
+				
+				const feature = e.features && e.features[0];
+				if (!feature) return;
+				
+				const coords = (feature.geometry as any).coordinates.slice() as [number, number];
+				
+				// Validate coordinates
+				if (!coords || coords.length !== 2 || 
+				    typeof coords[0] !== 'number' || typeof coords[1] !== 'number' ||
+				    isNaN(coords[0]) || isNaN(coords[1]) || 
+				    coords[0] === 0 || coords[1] === 0) {
+					console.warn('Invalid coordinates for crash point double-click:', coords);
+					return;
+				}
+				
+				// Get more comprehensive stats with larger radius for double-click
+				const stats = await computeNearbyStats(coords, 500); // 500m radius for double-click
+				const crashData = feature.properties ? feature.properties.crashData : undefined;
+				
+				let detailedText = 'Nearby Crash Analysis';
+				if (crashData && crashData.address) {
+					detailedText = `Detailed Analysis - ${crashData.address}`;
+				}
+				
+				if (onPopupCreate) onPopupCreate({ 
+					lngLat: coords, 
+					crashData,
+					text: detailedText, 
+					stats 
+				});
+			});
+
+			// Double-click on heatmap areas
+			map.on('dblclick', 'dc-heat', async (e) => {
+				e.preventDefault(); // Prevent default map zoom behavior
+				
+				const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+				
+				// Get comprehensive stats for the clicked location
+				const stats = await computeNearbyStats(coords, 500); // 500m radius
+				
+				if (onPopupCreate) onPopupCreate({ 
+					lngLat: coords, 
+					text: 'Area Crash Analysis', 
+					stats 
+				});
+			});
+
+			// General map double-click for any location
+			map.on('dblclick', async (e) => {
+				// Only trigger if not clicking on a feature
+				const features = map.queryRenderedFeatures(e.point, { layers: ['dc-point', 'dc-heat'] });
+				if (features.length > 0) return; // Already handled by feature-specific handlers
+				
+				e.preventDefault(); // Prevent default map zoom behavior
+				
+				const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+				
+				// Get stats for any location on the map
+				const stats = await computeNearbyStats(coords, 400); // 400m radius for general clicks
+				
+				if (stats.count > 0) {
+					if (onPopupCreate) onPopupCreate({ 
+						lngLat: coords, 
+						text: 'Location Analysis', 
+						stats 
+					});
+				} else {
+					if (onPopupCreate) onPopupCreate({ 
+						lngLat: coords, 
+						text: 'No crashes found in this area', 
+						stats: { count: 0, radiusMeters: 800 }
+					});
+				}
+			});
 		});
 
 		map.on('styledata', () => {

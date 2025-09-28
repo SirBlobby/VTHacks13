@@ -99,3 +99,82 @@ export const generateDCPoints = (count = 500) => {
 
     return { type: 'FeatureCollection', features } as GeoJSON.FeatureCollection<GeoJSON.Geometry>;
 };
+
+// Calculate crash density along a route path
+export const calculateRouteCrashDensity = (
+    routeCoordinates: [number, number][],
+    crashData: CrashData[],
+    searchRadiusMeters: number = 100
+): number[] => {
+    if (!routeCoordinates || routeCoordinates.length === 0) return [];
+    
+    const densities: number[] = [];
+    
+    for (let i = 0; i < routeCoordinates.length; i++) {
+        const currentPoint = routeCoordinates[i];
+        let crashCount = 0;
+        let severityScore = 0;
+        
+        // Count crashes within search radius of current point
+        for (const crash of crashData) {
+            const crashPoint: [number, number] = [crash.longitude, crash.latitude];
+            const distance = haversine(currentPoint, crashPoint);
+            
+            if (distance <= searchRadiusMeters) {
+                crashCount++;
+                // Weight by severity
+                const severity = Math.max(1, 
+                    (crash.fatalDriver + crash.fatalPedestrian + crash.fatalBicyclist) * 5 +
+                    (crash.majorInjuriesDriver + crash.majorInjuriesPedestrian + crash.majorInjuriesBicyclist) * 3 +
+                    (crash.totalVehicles + crash.totalPedestrians + crash.totalBicycles)
+                );
+                severityScore += severity;
+            }
+        }
+        
+        // Normalize density score (0-1 range)
+        const density = Math.min(1, severityScore / 20); // Adjust divisor based on data
+        densities.push(density);
+    }
+    
+    return densities;
+};
+
+// Create gradient stops based on crash densities along route
+export const createRouteGradientStops = (densities: number[]): any[] => {
+    if (!densities || densities.length === 0) {
+        // Default gradient: green to red
+        return [
+            'interpolate',
+            ['linear'],
+            ['line-progress'],
+            0, 'green',
+            1, 'red'
+        ];
+    }
+    
+    const stops: any[] = ['interpolate', ['linear'], ['line-progress']];
+    
+    for (let i = 0; i < densities.length; i++) {
+        const progress = i / (densities.length - 1);
+        const density = densities[i];
+        
+        // Color based on crash density: green (safe) to red (dangerous)
+        let color: string;
+        if (density < 0.2) {
+            color = '#22c55e'; // green
+        } else if (density < 0.4) {
+            color = '#eab308'; // yellow
+        } else if (density < 0.6) {
+            color = '#f97316'; // orange
+        } else if (density < 0.8) {
+            color = '#dc2626'; // red
+        } else {
+            color = '#7f1d1d'; // dark red
+        }
+        
+        stops.push(progress, color);
+    }
+    
+    return stops;
+};

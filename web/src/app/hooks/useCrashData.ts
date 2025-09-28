@@ -4,6 +4,7 @@ import { CrashData, CrashResponse } from '../api/crashes/route';
 export interface UseCrashDataOptions {
   autoLoad?: boolean;
   limit?: number;
+  yearFilter?: string | null;
 }
 
 export interface UseCrashDataResult {
@@ -11,25 +12,38 @@ export interface UseCrashDataResult {
   loading: boolean;
   error: string | null;
   pagination: CrashResponse['pagination'] | null;
+  yearFilter: string | null;
   loadPage: (page: number) => Promise<void>;
   loadMore: () => Promise<void>;
   refresh: () => Promise<void>;
+  setYearFilter: (year: string | null) => void;
 }
 
 export function useCrashData(options: UseCrashDataOptions = {}): UseCrashDataResult {
-  const { autoLoad = true, limit = 100 } = options;
+  const currentYear = new Date().getFullYear().toString();
+  const { autoLoad = true, limit = 100, yearFilter: initialYearFilter = currentYear } = options;
   
   const [data, setData] = useState<CrashData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<CrashResponse['pagination'] | null>(null);
+  const [yearFilter, setYearFilterState] = useState<string | null>(initialYearFilter);
 
   const fetchCrashData = useCallback(async (page: number, append: boolean = false) => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/crashes?page=${page}&limit=${limit}`);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+      
+      if (yearFilter) {
+        params.append('year', yearFilter);
+      }
+
+      const response = await fetch(`/api/crashes?${params.toString()}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch crash data: ${response.statusText}`);
@@ -51,7 +65,7 @@ export function useCrashData(options: UseCrashDataOptions = {}): UseCrashDataRes
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, yearFilter]);
 
   const loadPage = useCallback((page: number) => {
     return fetchCrashData(page, false);
@@ -68,20 +82,29 @@ export function useCrashData(options: UseCrashDataOptions = {}): UseCrashDataRes
     return fetchCrashData(1, false);
   }, [fetchCrashData]);
 
-  // Auto-load first page on mount
+  const setYearFilter = useCallback((year: string | null) => {
+    setYearFilterState(year);
+    // Refresh data when year filter changes
+    setData([]);
+    setPagination(null);
+  }, []);
+
+  // Auto-load first page on mount or when year filter changes
   useEffect(() => {
     if (autoLoad) {
       loadPage(1);
     }
-  }, [autoLoad, loadPage]);
+  }, [autoLoad, loadPage, yearFilter]);
 
   return {
     data,
     loading,
     error,
     pagination,
+    yearFilter,
     loadPage,
     loadMore,
     refresh,
+    setYearFilter,
   };
 }

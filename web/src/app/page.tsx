@@ -13,9 +13,9 @@ import { useCrashData } from './hooks/useCrashData';
 export default function Home() {
 	const mapRef = useRef<any>(null);
 	const [heatVisible, setHeatVisible] = useState(true);
-	const [pointsVisible, setPointsVisible] = useState(true);
+	const [pointsVisible, setPointsVisible] = useState(false);
 	const [mapStyleChoice, setMapStyleChoice] = useState<'dark' | 'streets'>('dark');
-	const [heatRadius, setHeatRadius] = useState(30);
+	const [heatRadius, setHeatRadius] = useState(16);
 	const [heatIntensity, setHeatIntensity] = useState(1);
 	const [panelOpen, setPanelOpen] = useState<boolean>(() => {
 		try { const v = typeof window !== 'undefined' ? window.localStorage.getItem('map_panel_open') : null; return v === null ? true : v === '1'; } catch (e) { return true; }
