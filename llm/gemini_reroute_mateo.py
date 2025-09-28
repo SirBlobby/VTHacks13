@@ -294,43 +294,63 @@ class SafeRouteAnalyzer:
             if casualties.get('bicyclists', {}).get('total', 0) > 0:
                 risk_factors['bicyclist'] += 1
         
-        weather_info = f"\n\nCURRENT WEATHER CONDITIONS:\n{weather_summary}" if weather_summary else ""
+        # Determine safety level
+        total_crashes = route_safety_data.get('total_crashes_near_route', 0)
+        avg_score = route_safety_data.get('average_safety_score', 0)
         
-        prompt = f"""You are an expert traffic safety analyst and route planning specialist. Analyze this route's safety profile and provide recommendations.
+        if avg_score == 0:
+            safety_level = "SAFE"
+        elif avg_score <= 2:
+            safety_level = "LOW RISK" 
+        elif avg_score <= 5:
+            safety_level = "MODERATE RISK"
+        elif avg_score <= 10:
+            safety_level = "HIGH RISK"
+        else:
+            safety_level = "DANGEROUS"
 
-ROUTE INFORMATION:
-- Distance: {route_info.get('distance_km', 0):.1f} km
-- Estimated duration: {route_info.get('duration_min', 0):.0f} minutes
-- Analysis points along route: {len(safety_points)}
+        weather_info = f" Current weather: {weather_summary}." if weather_summary else ""
 
-SAFETY ANALYSIS (2020+ crash data):
-- Total crashes near route: {route_safety_data.get('total_crashes_near_route', 0)}
-- Average safety score: {route_safety_data.get('average_safety_score', 0):.2f}
-- Maximum danger score: {route_safety_data.get('max_danger_score', 0):.2f}
+        prompt = f"""Analyze this route's safety and provide a concise summary with bullet points.
 
-CRASH BREAKDOWN:
-- Severity distribution: {severity_counts}
-- Casualties: {casualty_summary['fatal']} fatal, {casualty_summary['major']} major injuries, {casualty_summary['minor']} minor injuries
-- Risk factors: {risk_factors['speeding']} speeding-related, {risk_factors['impairment']} impairment-related
-- Vulnerable users: {risk_factors['pedestrian']} pedestrian crashes, {risk_factors['bicyclist']} bicyclist crashes
+ROUTE: {route_info.get('distance_km', 0):.1f}km, {route_info.get('duration_min', 0):.0f}min
+CRASHES: {total_crashes} crashes nearby (2020+), safety score {avg_score:.1f}
+CASUALTIES: {casualty_summary['fatal']} fatal, {casualty_summary['major']} major, {casualty_summary['minor']} minor
+RISK FACTORS: {risk_factors['speeding']} speeding, {risk_factors['impairment']} impairment, {risk_factors['pedestrian']} pedestrian, {risk_factors['bicyclist']} bicyclist{weather_info}
 
-MOST DANGEROUS SECTIONS:
-{chr(10).join([f"Point {p['point_index']}: {p['crashes_count']} crashes nearby, safety score {p['safety_score']:.1f}" for p in dangerous_points[:3]])}
-{weather_info}
+Provide a brief summary with:
+• Safety Assessment: {safety_level}
+• Key Risks (2-3 bullet points max)  
+• Driving Tips (2-3 bullet points max)
+• Weather Considerations (if applicable)
 
-Please provide:
-1. Overall route safety assessment (SAFE/MODERATE RISK/HIGH RISK/DANGEROUS)
-2. Specific dangerous sections to watch out for
-3. Driving recommendations for this route considering current conditions
-4. Whether an alternative route should be recommended
-5. Time-of-day considerations if applicable
-6. Weather-specific precautions based on crash patterns
-
-Be specific and actionable in your recommendations."""
+Keep it concise and actionable."""
 
         try:
             response = llm.invoke(prompt)
-            return response.content
+            result = response.content
+            
+            # Clean up AI response - remove all markdown formatting
+            if result:
+                import re
+                # Remove markdown headers (### ** ##)
+                result = re.sub(r'#+\s*', '', result)
+                # Remove bold formatting (**text**)
+                result = re.sub(r'\*\*([^*]+)\*\*', r'\1', result)
+                # Remove italic formatting (*text*)
+                result = re.sub(r'\*([^*]+)\*', r'\1', result)
+                # Convert markdown bullet points to clean bullets
+                result = re.sub(r'^\s*[-*+]\s*', '• ', result, flags=re.MULTILINE)
+                # Remove markdown code blocks
+                result = re.sub(r'```[^`]*```', '', result)
+                result = re.sub(r'`([^`]+)`', r'\1', result)
+                # Clean up multiple newlines but preserve structure
+                result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
+                # Clean up extra spaces within lines
+                result = re.sub(r'[ \t]+', ' ', result)
+                result = result.strip()
+            
+            return result
         except Exception as e:
             return f"Error generating safety analysis: {e}"
 
@@ -415,24 +435,44 @@ Be specific and actionable in your recommendations."""
                 'max_danger_score': safety_data.get('max_danger_score', 0)
             })
         
-        weather_info = f"\nCurrent weather: {weather_summary}" if weather_summary else ""
-        
-        prompt = f"""Compare these route options for safety and provide a recommendation:
+        weather_info = f" Weather: {weather_summary}." if weather_summary else ""
 
-ROUTE OPTIONS:
-{chr(10).join([f"Route {r['route_num']}: {r['distance_km']:.1f}km, {r['duration_min']:.0f}min, {r['crashes_near_route']} nearby crashes, safety score {r['safety_score']:.2f}" for r in comparison_data])}{weather_info}
+        prompt = f"""Compare these routes briefly:
+
+{chr(10).join([f"Route {r['route_num']}: {r['distance_km']:.1f}km, {r['duration_min']:.0f}min, {r['crashes_near_route']} crashes, score {r['safety_score']:.1f}" for r in comparison_data])}{weather_info}
 
 Provide:
-1. Which route is safest and why
-2. Trade-offs between routes (safety vs. time/distance)
-3. Clear recommendation with reasoning
-4. Any weather-related considerations
+• Recommended route and why (1-2 sentences)
+• Key trade-offs (safety vs time/distance)  
+• Final recommendation
 
-Keep it concise and actionable."""
+Keep it brief and clear."""
 
         try:
             response = llm.invoke(prompt)
-            return response.content
+            result = response.content
+            
+            # Clean up AI response - remove all markdown formatting
+            if result:
+                import re
+                # Remove markdown headers (### ** ##)
+                result = re.sub(r'#+\s*', '', result)
+                # Remove bold formatting (**text**)
+                result = re.sub(r'\*\*([^*]+)\*\*', r'\1', result)
+                # Remove italic formatting (*text*)
+                result = re.sub(r'\*([^*]+)\*', r'\1', result)
+                # Convert markdown bullet points to clean bullets
+                result = re.sub(r'^\s*[-*+]\s*', '• ', result, flags=re.MULTILINE)
+                # Remove markdown code blocks
+                result = re.sub(r'```[^`]*```', '', result)
+                result = re.sub(r'`([^`]+)`', r'\1', result)
+                # Clean up multiple newlines but preserve structure
+                result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
+                # Clean up extra spaces within lines
+                result = re.sub(r'[ \t]+', ' ', result)
+                result = result.strip()
+            
+            return result
         except Exception as e:
             return f"Error comparing routes: {e}"
 
