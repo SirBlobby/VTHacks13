@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import GeocodeInput from './GeocodeInput';
 import { useCrashData } from '../hooks/useCrashData';
-import { calculateRouteCrashDensity, createRouteGradientStops } from '../../lib/mapUtils';
+import { calculateRouteDensity } from '../../lib/mapUtils';
 import { fetchSafeRoute, type SafeRouteData } from '../../lib/flaskApi';
 
 interface Props {
@@ -315,8 +315,12 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
       // Apply crash density gradient to all routes if crash data is available and gradient routes enabled
       if (gradientRoutes && crashDataHook.data.length > 0) {
         const routeCoordinates = (route.geometry as any).coordinates as [number, number][];
-        const crashDensities = calculateRouteCrashDensity(routeCoordinates, crashDataHook.data, 150);
-        const gradientStops = createRouteGradientStops(crashDensities);
+        const crashDensity = calculateRouteDensity(routeCoordinates, crashDataHook.data, 150);
+        // For now, create a simple gradient based on the density value
+        const gradientStops = [
+          [0, crashDensity > 2 ? '#ff0000' : crashDensity > 1 ? '#ff6600' : '#00ff00'],
+          [1, crashDensity > 2 ? '#8b0000' : crashDensity > 1 ? '#ff4500' : '#006400']
+        ];
         
         map.setPaintProperty(layerId, 'line-gradient', gradientStops as [string, ...any[]]);
         map.setPaintProperty(layerId, 'line-color', undefined); // Remove solid color when using gradient
