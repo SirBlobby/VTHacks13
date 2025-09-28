@@ -366,6 +366,87 @@ def get_single_route_endpoint():
             'error': str(e)
         }), 500
 
+@app.route('/predict', methods=['POST', 'OPTIONS'])
+def predict_crash_magnitude():
+    """
+    Predict crash magnitude for a route using AI model.
+    Expected request body:
+    {
+        "source": {"lat": float, "lon": float},
+        "destination": {"lat": float, "lon": float}
+    }
+    """
+    # Handle preflight CORS request
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+            
+        # Validate required fields
+        if 'source' not in data or 'destination' not in data:
+            return jsonify({'error': 'Missing source or destination coordinates'}), 400
+            
+        source = data['source']
+        destination = data['destination']
+        
+        # Validate coordinate format
+        required_fields = ['lat', 'lon']
+        for coord_set, name in [(source, 'source'), (destination, 'destination')]:
+            for field in required_fields:
+                if field not in coord_set:
+                    return jsonify({'error': f'Missing {field} in {name} coordinates'}), 400
+                try:
+                    float(coord_set[field])
+                except (TypeError, ValueError):
+                    return jsonify({'error': f'Invalid {field} value in {name} coordinates'}), 400
+        
+        # For now, return a mock prediction based on distance
+        # In a real implementation, this would call your AI model
+        import math
+        
+        lat1, lon1 = float(source['lat']), float(source['lon'])
+        lat2, lon2 = float(destination['lat']), float(destination['lon'])
+        
+        # Calculate distance (rough approximation)
+        distance = math.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2)
+        
+        # Mock prediction: longer routes might have higher crash magnitude
+        # This is just placeholder logic until you integrate your actual AI model
+        base_magnitude = min(distance * 50, 1.0)  # Cap at 1.0
+        confidence = 0.85  # Mock confidence
+        
+        response_data = {
+            'prediction': {
+                'prediction': base_magnitude,
+                'confidence': confidence
+            },
+            'called_with': f"Route from ({lat1}, {lon1}) to ({lat2}, {lon2})",
+            'diagnostics': {
+                'input_dim': 4  # lat1, lon1, lat2, lon2
+            }
+        }
+        
+        print(f"🔮 Crash magnitude prediction request: {data}")
+        print(f"📊 Returning prediction: {response_data['prediction']['prediction']:.3f}")
+        
+        response = jsonify(response_data)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error in crash magnitude prediction: {e}")
+        traceback.print_exc()
+        error_response = jsonify({'error': str(e)})
+        error_response.headers.add('Access-Control-Allow-Origin', '*')
+        return error_response, 500
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
@@ -382,6 +463,7 @@ if __name__ == '__main__':
     print("   - POST /api/analyze-crashes")
     print("   - POST /api/find-safe-route")
     print("   - POST /api/get-single-route")
+    print("   - POST /predict (AI crash magnitude prediction)")
     print("\n🌐 Server running on http://localhost:5001")
     
     app.run(debug=True, host='0.0.0.0', port=5001)

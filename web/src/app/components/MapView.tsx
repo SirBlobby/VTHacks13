@@ -5,7 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import { generateDCPoints, haversine, PointFeature, convertCrashDataToGeoJSON } from '../lib/mapUtils';
+import { generateDCPoints, generateDCPointsWithAI, haversine, PointFeature, convertCrashDataToGeoJSON, convertCrashDataToGeoJSONWithAI } from '../lib/mapUtils';
 import { useCrashData, UseCrashDataResult } from '../hooks/useCrashData';
 import { CrashData } from '../api/crashes/route';
 import { WeatherData, CrashAnalysisData } from '../../lib/flaskApi';
@@ -49,6 +49,7 @@ interface MapViewProps {
 	crashData?: CrashData[]; // external crash data to use
 	crashDataHook?: UseCrashDataResult; // the crash data hook from main page
 	isMapPickingMode?: boolean; // whether map is in picking mode (prevents popups)
+	useAIMagnitudes?: boolean; // whether to use AI-predicted crash magnitudes
 }
 
 export default function MapView({ 
@@ -63,7 +64,8 @@ export default function MapView({
 	useRealCrashData = true,
 	crashData = [],
 	crashDataHook,
-	isMapPickingMode = false
+	isMapPickingMode = false,
+	useAIMagnitudes = true // Default to true to use AI predictions
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -71,6 +73,7 @@ export default function MapView({
 	const styleChoiceRef = useRef<'dark' | 'streets'>(mapStyleChoice);
 	const isMapPickingModeRef = useRef<boolean>(isMapPickingMode);
 	const [size, setSize] = useState({ width: 0, height: 0 });
+	const [isLoadingAIPredictions, setIsLoadingAIPredictions] = useState(false);
 	const dcDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
 	const internalCrashDataHook = useCrashData({ autoLoad: false, limit: 10000 }); // Don't auto-load if external data provided
 
@@ -84,80 +87,40 @@ export default function MapView({
 		const currentCrashDataHook = crashDataHook || internalCrashDataHook;
 		const activeData = crashData.length > 0 ? crashData : currentCrashDataHook.data;
 		console.log('MapView useEffect: crashData.length =', crashData.length, 'crashDataHook.data.length =', currentCrashDataHook.data.length);
+		
 		if (useRealCrashData && activeData.length > 0) {
 			console.log('Converting crash data to GeoJSON...');
-			dcDataRef.current = convertCrashDataToGeoJSON(activeData);
-			// Update the map source if map is ready
-			const map = mapRef.current;
-			if (map && map.isStyleLoaded()) {
-				console.log('Updating map source with new data...');
-				if (map.getSource('dc-quakes')) {
-					(map.getSource('dc-quakes') as mapboxgl.GeoJSONSource).setData(dcDataRef.current);
+			
+			const processData = async () => {
+				setIsLoadingAIPredictions(useAIMagnitudes);
+				
+				let geoJSONData: GeoJSON.FeatureCollection;
+				if (useAIMagnitudes) {
+					console.log('🤖 Using AI-enhanced crash data conversion...');
+					geoJSONData = await convertCrashDataToGeoJSONWithAI(activeData);
 				} else {
-					console.log('Source not found, calling addDataAndLayers');
-					// Call the inner function manually - we need to recreate it here
-					if (dcDataRef.current) {
-						console.log('Adding data and layers, data has', dcDataRef.current.features.length, 'features');
-						if (!map.getSource('dc-quakes')) {
-							console.log('Creating new source');
-							map.addSource('dc-quakes', { type: 'geojson', data: dcDataRef.current });
-						}
-						// Add layers if they don't exist
-						if (!map.getLayer('dc-heat')) {
-							map.addLayer({
-								id: 'dc-heat', type: 'heatmap', source: 'dc-quakes',
-								paint: {
-									'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 6, 1],
-									'heatmap-intensity': heatIntensity,
-									'heatmap-color': [
-										'interpolate', 
-										['linear'], 
-										['heatmap-density'], 
-										0, 'rgba(0,0,0,0)', 
-										0.2, 'rgba(255,255,0,0.7)', 
-										0.4, 'rgba(255,165,0,0.8)', 
-										0.6, 'rgba(255,69,0,0.9)', 
-										0.8, 'rgba(255,0,0,0.95)', 
-										1, 'rgba(139,0,0,1)'
-									],
-									'heatmap-radius': heatRadius,
-									'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 7, 1, 12, 0.8]
-								}
-							});
-						}
-						if (!map.getLayer('dc-point')) {
-							map.addLayer({
-								id: 'dc-point', type: 'circle', source: 'dc-quakes', minzoom: 12,
-								paint: {
-									'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 1, 3, 6, 10],
-									'circle-color': [
-										'interpolate', 
-										['linear'], 
-										['get', 'mag'], 
-										1, styleChoiceRef.current === 'dark' ? '#ffff99' : '#ffa500',
-										3, styleChoiceRef.current === 'dark' ? '#ff6666' : '#ff4500',
-										6, styleChoiceRef.current === 'dark' ? '#ff0000' : '#8b0000'
-									] as any,
-									'circle-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 14, 0.9],
-									'circle-stroke-width': 1,
-									'circle-stroke-color': styleChoiceRef.current === 'dark' ? '#ffffff' : '#000000'
-								}
-							});
-						}
-						// Update layer visibility
-						if (map.getLayer('dc-heat')) {
-							map.setLayoutProperty('dc-heat', 'visibility', heatVisible ? 'visible' : 'none');
-						}
-						if (map.getLayer('dc-point')) {
-							map.setLayoutProperty('dc-point', 'visibility', pointsVisible ? 'visible' : 'none');
-						}
+					console.log('📊 Using standard crash data conversion...');
+					geoJSONData = convertCrashDataToGeoJSON(activeData);
+				}
+				
+				dcDataRef.current = geoJSONData;
+				setIsLoadingAIPredictions(false);
+				
+				// Update the map source if map is ready
+				const map = mapRef.current;
+				if (map && map.isStyleLoaded()) {
+					console.log('Updating map source with new data...');
+					if (map.getSource('dc-quakes')) {
+						(map.getSource('dc-quakes') as mapboxgl.GeoJSONSource).setData(dcDataRef.current);
+					} else {
+						console.log('Source not found, will be added when map loads');
 					}
 				}
-			} else {
-				console.log('Map style not loaded yet');
-			}
+			};
+			
+			processData().catch(console.error);
 		}
-	}, [useRealCrashData, crashDataHook?.data, crashData, heatRadius, heatIntensity, heatVisible, pointsVisible]);
+	}, [crashData, crashDataHook, useRealCrashData, useAIMagnitudes]);
 
 	useEffect(() => {
 		const el = containerRef.current;
@@ -236,16 +199,35 @@ export default function MapView({
 		const currentCrashDataHook = crashDataHook || internalCrashDataHook;
 		const activeData = crashData.length > 0 ? crashData : currentCrashDataHook.data;
 		console.log('Initializing map data, activeData length:', activeData.length);
-		if (useRealCrashData && activeData.length > 0) {
-			console.log('Using real crash data');
-			dcDataRef.current = convertCrashDataToGeoJSON(activeData);
-		} else if (!useRealCrashData) {
-			console.log('Using synthetic data');
-			dcDataRef.current = generateDCPoints(900);
-		} else {
-			console.log('No data available yet, using empty data');
-			dcDataRef.current = { type: 'FeatureCollection' as const, features: [] };
-		}
+		
+		const initializeData = async () => {
+			if (useRealCrashData && activeData.length > 0) {
+				console.log('Using real crash data');
+				if (useAIMagnitudes) {
+					setIsLoadingAIPredictions(true);
+					console.log('🤖 Using AI-enhanced real crash data...');
+					dcDataRef.current = await convertCrashDataToGeoJSONWithAI(activeData);
+					setIsLoadingAIPredictions(false);
+				} else {
+					dcDataRef.current = convertCrashDataToGeoJSON(activeData);
+				}
+			} else if (!useRealCrashData) {
+				console.log('Using synthetic data');
+				if (useAIMagnitudes) {
+					setIsLoadingAIPredictions(true);
+					console.log('🤖 Using AI-enhanced synthetic data...');
+					dcDataRef.current = await generateDCPointsWithAI(900);
+					setIsLoadingAIPredictions(false);
+				} else {
+					dcDataRef.current = generateDCPoints(900);
+				}
+			} else {
+				console.log('No data available yet, using empty data');
+				dcDataRef.current = { type: 'FeatureCollection' as const, features: [] };
+			}
+		};
+		
+		initializeData().catch(console.error);
 
 		const computeNearbyStats = async (center: [number, number], radiusMeters = 300) => {
 			try {
