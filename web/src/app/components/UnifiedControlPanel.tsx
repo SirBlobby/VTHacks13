@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UseCrashDataResult } from '../hooks/useCrashData';
 
 interface UnifiedControlPanelProps {
@@ -39,38 +39,55 @@ export default function UnifiedControlPanel({
 	crashDataHook,
 	onDataLoaded
 }: UnifiedControlPanelProps) {
-	// Panel state management
-	const [mainPanelOpen, setMainPanelOpen] = useState<boolean>(() => {
-		try { 
-			const v = typeof window !== 'undefined' ? window.localStorage.getItem('unified_panel_open') : null; 
-			return v === null ? true : v === '1'; 
-		} catch (e) { 
-			return true; 
-		}
-	});
+	// Panel open/closed state with localStorage persistence
+	const getInitialPanelState = () => {
+		// Always start with default values during SSR
+		return true;
+	};
 	
-	const [mapControlsOpen, setMapControlsOpen] = useState<boolean>(() => {
-		try { 
-			const v = typeof window !== 'undefined' ? window.localStorage.getItem('map_controls_section_open') : null; 
-			return v === null ? true : v === '1'; 
-		} catch (e) { 
-			return true; 
-		}
-	});
+	const getInitialMapControlsState = () => {
+		// Always start with default values during SSR
+		return true;
+	};
 	
-	const [crashDataOpen, setCrashDataOpen] = useState<boolean>(() => {
-		try { 
-			const v = typeof window !== 'undefined' ? window.localStorage.getItem('crash_data_section_open') : null; 
-			return v === null ? true : v === '1'; 
-		} catch (e) { 
-			return true; 
-		}
-	});
+	const getInitialCrashDataState = () => {
+		// Always start with default values during SSR
+		return false;
+	};
 
-	// Crash data state
+	const [isPanelOpen, setIsPanelOpen] = useState(getInitialPanelState);
+	const [isMapControlsSectionOpen, setIsMapControlsSectionOpen] = useState(getInitialMapControlsState);
+	const [isCrashDataSectionOpen, setIsCrashDataSectionOpen] = useState(getInitialCrashDataState);
+	const [isHydrated, setIsHydrated] = useState(false);
+	
+	// Load localStorage values after hydration
+	useEffect(() => {
+		const panelValue = window.localStorage.getItem('unified_panel_open');
+		const mapControlsValue = window.localStorage.getItem('map_controls_section_open');
+		const crashDataValue = window.localStorage.getItem('crash_data_section_open');
+		
+		if (panelValue !== null) {
+			setIsPanelOpen(panelValue === '1');
+		}
+		if (mapControlsValue !== null) {
+			setIsMapControlsSectionOpen(mapControlsValue === '1');
+		}
+		if (crashDataValue !== null) {
+			setIsCrashDataSectionOpen(crashDataValue === '1');
+		}
+		
+		setIsHydrated(true);
+	}, []);	// Crash data state
 	const { data, loading, error, pagination, loadMore, refresh, yearFilter, setYearFilter } = crashDataHook;
-	const currentYear = new Date().getFullYear().toString();
-	const [selectedYear, setSelectedYear] = useState<string>(yearFilter || currentYear);
+	const [currentYear, setCurrentYear] = useState('2024'); // Default to prevent hydration mismatch
+	const [selectedYear, setSelectedYear] = useState<string>('2024'); // Default value
+
+	// Set actual current year and selected year after hydration
+	useEffect(() => {
+		const actualCurrentYear = new Date().getFullYear().toString();
+		setCurrentYear(actualCurrentYear);
+		setSelectedYear(yearFilter || actualCurrentYear);
+	}, [yearFilter]);
 
 	React.useEffect(() => {
 		if (onDataLoaded) {
@@ -87,21 +104,21 @@ export default function UnifiedControlPanel({
 	};
 
 	const toggleMainPanel = (next: boolean) => {
-		setMainPanelOpen(next);
+		setIsPanelOpen(next);
 		try { 
 			window.localStorage.setItem('unified_panel_open', next ? '1' : '0'); 
 		} catch (e) {}
 	};
 
 	const toggleMapControls = (next: boolean) => {
-		setMapControlsOpen(next);
+		setIsMapControlsSectionOpen(next);
 		try { 
 			window.localStorage.setItem('map_controls_section_open', next ? '1' : '0'); 
 		} catch (e) {}
 	};
 
 	const toggleCrashData = (next: boolean) => {
-		setCrashDataOpen(next);
+		setIsCrashDataSectionOpen(next);
 		try { 
 			window.localStorage.setItem('crash_data_section_open', next ? '1' : '0'); 
 		} catch (e) {}
@@ -162,9 +179,9 @@ export default function UnifiedControlPanel({
 			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
 				<div style={{ fontWeight: 700, fontSize: '16px', color: '#f9fafb' }}>Control Panel</div>
 				<button 
-					aria-expanded={mainPanelOpen} 
-					aria-label={mainPanelOpen ? 'Collapse panel' : 'Expand panel'} 
-					onClick={() => toggleMainPanel(!mainPanelOpen)} 
+					aria-expanded={isPanelOpen} 
+					aria-label={isPanelOpen ? 'Collapse panel' : 'Expand panel'} 
+					onClick={() => toggleMainPanel(!isPanelOpen)} 
 					style={{ 
 						borderRadius: 8, 
 						padding: '8px 12px',
@@ -175,26 +192,26 @@ export default function UnifiedControlPanel({
 						cursor: 'pointer'
 					}}
 				>
-					{mainPanelOpen ? '−' : '+'}
+					{isPanelOpen ? '−' : '+'}
 				</button>
 			</div>
 
-			{mainPanelOpen && (
+			{isPanelOpen && (
 				<>
 					{/* Map Controls Section */}
 					<div style={{ marginBottom: '20px' }}>
 						<div style={sectionHeaderStyle}>
 							<div style={{ fontWeight: 600, fontSize: '14px', color: '#f9fafb' }}>Map Controls</div>
 							<button 
-								onClick={() => toggleMapControls(!mapControlsOpen)}
+								onClick={() => toggleMapControls(!isMapControlsSectionOpen)}
 								style={toggleButtonStyle}
-								aria-expanded={mapControlsOpen}
+								aria-expanded={isMapControlsSectionOpen}
 							>
-								{mapControlsOpen ? '−' : '+'}
+								{isMapControlsSectionOpen ? '−' : '+'}
 							</button>
 						</div>
 
-						{mapControlsOpen && (
+						{isMapControlsSectionOpen && (
 							<div style={{ paddingLeft: '8px' }}>
 								<div className="mc-row">
 									<label className="mc-label">Style</label>
@@ -239,15 +256,15 @@ export default function UnifiedControlPanel({
 						<div style={sectionHeaderStyle}>
 							<div style={{ fontWeight: 600, fontSize: '14px', color: '#f9fafb' }}>Crash Data</div>
 							<button 
-								onClick={() => toggleCrashData(!crashDataOpen)}
+								onClick={() => toggleCrashData(!isCrashDataSectionOpen)}
 								style={toggleButtonStyle}
-								aria-expanded={crashDataOpen}
+								aria-expanded={isCrashDataSectionOpen}
 							>
-								{crashDataOpen ? '−' : '+'}
+								{isCrashDataSectionOpen ? '−' : '+'}
 							</button>
 						</div>
 
-						{crashDataOpen && (
+						{isCrashDataSectionOpen && (
 							<div style={{ paddingLeft: '8px' }}>
 								{/* Crash Density Legend */}
 								<div style={{ marginBottom: '16px' }}>

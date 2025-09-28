@@ -8,6 +8,7 @@ import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { generateDCPoints, haversine, PointFeature, convertCrashDataToGeoJSON } from '../lib/mapUtils';
 import { useCrashData, UseCrashDataResult } from '../hooks/useCrashData';
 import { CrashData } from '../api/crashes/route';
+import { WeatherData, CrashAnalysisData } from '../../lib/flaskApi';
 
 export type PopupData = { 
 	lngLat: [number, number]; 
@@ -27,7 +28,12 @@ export type PopupData = {
 			propertyOnly: number;
 		};
 		crashes?: any[]; // Top 5 nearby crashes
-	} 
+	};
+	// New API data
+	weather?: WeatherData;
+	crashAnalysis?: CrashAnalysisData;
+	apiError?: string;
+	isLoadingApi?: boolean;
 } | null;
 
 interface MapViewProps {

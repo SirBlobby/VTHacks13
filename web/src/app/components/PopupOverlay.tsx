@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import type { PopupData } from './MapView';
+import { fetchWeatherData, fetchCrashAnalysis, type WeatherData, type CrashAnalysisData } from '../../lib/flaskApi';
 
 interface Props {
 	popup: PopupData;
@@ -10,12 +11,64 @@ interface Props {
 	mapRef: React.MutableRefObject<mapboxgl.Map | null>;
 	onClose: () => void;
 	autoDismissMs?: number; // Auto-dismiss timeout in milliseconds, default 5000 (5 seconds)
+	onOpenModal?: (data: { weather?: WeatherData; crashAnalysis?: CrashAnalysisData; coordinates?: [number, number] }) => void;
 }
 
-export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, autoDismissMs = 5000 }: Props) {
+export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, autoDismissMs = 5000, onOpenModal }: Props) {
 	const [isHovered, setIsHovered] = useState(false);
 	const [timeLeft, setTimeLeft] = useState(autoDismissMs);
 	const [popupPosition, setPopupPosition] = useState({ left: 0, top: 0, transform: 'translate(-50%, -100%)', arrowPosition: 'bottom' });
+	const [aiDataLoaded, setAiDataLoaded] = useState(false);
+	
+	// API data states
+	const [apiData, setApiData] = useState<{
+		weather?: WeatherData;
+		crashAnalysis?: CrashAnalysisData;
+	}>({});
+	const [apiLoading, setApiLoading] = useState(false);
+	const [apiError, setApiError] = useState<string | null>(null);
+
+	// Fetch API data when popup opens
+	useEffect(() => {
+		if (!popup || !popupVisible) {
+			setApiData({});
+			setApiError(null);
+			setAiDataLoaded(false);
+			return;
+		}
+
+		const fetchApiData = async () => {
+			const [lat, lon] = [popup.lngLat[1], popup.lngLat[0]];
+			
+			setApiLoading(true);
+			setApiError(null);
+			setAiDataLoaded(false);
+			
+			try {
+				// Fetch both weather and crash analysis data
+				const [weatherData, crashAnalysisData] = await Promise.all([
+					fetchWeatherData(lat, lon),
+					fetchCrashAnalysis(lat, lon)
+				]);
+				
+				setApiData({
+					weather: weatherData,
+					crashAnalysis: crashAnalysisData,
+				});
+				setAiDataLoaded(true); // Mark AI data as loaded
+			} catch (error) {
+				setApiError(error instanceof Error ? error.message : 'Unknown error occurred');
+				setAiDataLoaded(true); // Still mark as "loaded" even if failed, so timer can start
+			} finally {
+				setApiLoading(false);
+			}
+		};
+
+		// Fetch API data with a small delay to avoid too many requests
+		const timeoutId = setTimeout(fetchApiData, 300);
+		
+		return () => clearTimeout(timeoutId);
+	}, [popup, popupVisible]);
 
 	// Calculate smart popup positioning
 	const calculatePopupPosition = (clickPoint: mapboxgl.Point) => {
@@ -29,7 +82,14 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 		const viewportWidth = window.innerWidth;
 		const viewportHeight = window.innerHeight;
 		const popupWidth = 350; // max-width from styles
-		const popupHeight = 200; // estimated height
+		
+		// Estimate height based on content - larger when AI data is loaded
+		let popupHeight = 180; // base height for basic popup
+		if (apiData.weather || apiData.crashAnalysis) {
+			// Use a more conservative estimate - the AI content can be quite long
+			popupHeight = Math.min(500, viewportHeight * 0.75); // Cap at 75% of viewport height
+		}
+		
 		const padding = 20; // padding from screen edges
 		
 		let left = clickPoint.x;
@@ -54,22 +114,60 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 			transform = 'translateX(-50%)';
 		}
 		
-		// Determine vertical position
-		if (clickPoint.y - popupHeight - padding < 0) {
+		// Determine vertical position - prioritize keeping popup in viewport
+		const spaceAbove = clickPoint.y - padding;
+		const spaceBelow = viewportHeight - clickPoint.y - padding;
+		
+		// Simple logic: try below first, then above, then force fit
+		if (spaceBelow >= popupHeight) {
 			// Position below cursor
-			top = clickPoint.y + 10;
-			transform += ' translateY(0%)';
-			arrowPosition = arrowPosition === 'bottom' ? 'top' : arrowPosition;
+			top = clickPoint.y + 15;
+			arrowPosition = arrowPosition === 'right' || arrowPosition === 'left' ? arrowPosition : 'top';
+		} else if (spaceAbove >= popupHeight) {
+			// Position above cursor
+			top = clickPoint.y - popupHeight - 15;
+			arrowPosition = arrowPosition === 'right' || arrowPosition === 'left' ? arrowPosition : 'bottom';
 		} else {
-			// Position above cursor (default)
-			top = clickPoint.y - 10;
-			transform += ' translateY(-100%)';
+			// Force fit - use the side with more space
+			if (spaceBelow > spaceAbove) {
+				top = Math.max(padding, viewportHeight - popupHeight - padding);
+			} else {
+				top = padding;
+			}
+			arrowPosition = arrowPosition === 'right' || arrowPosition === 'left' ? arrowPosition : 'none';
+		}
+		
+		// Always use translateX for horizontal, no vertical transform complications
+		// The top position is already calculated to place the popup correctly
+
+		// Final bounds checking - be very aggressive about keeping popup in viewport
+		if (left < padding) left = padding;
+		if (left + popupWidth > viewportWidth - padding) left = viewportWidth - popupWidth - padding;
+		
+		// Ensure popup stays within vertical bounds - no transform complications
+		if (top < padding) {
+			top = padding;
+		}
+		if (top + popupHeight > viewportHeight - padding) {
+			top = Math.max(padding, viewportHeight - popupHeight - padding);
+		}
+		
+		// Debug logging to understand positioning issues
+		if (apiData.weather || apiData.crashAnalysis) {
+			console.log('Popup positioning debug:', {
+				clickPoint: { x: clickPoint.x, y: clickPoint.y },
+				viewport: { width: viewportWidth, height: viewportHeight },
+				popupHeight,
+				spaceAbove: clickPoint.y - padding,
+				spaceBelow: viewportHeight - clickPoint.y - padding,
+				finalPosition: { left, top, transform }
+			});
 		}
 		
 		return { left, top, transform, arrowPosition };
 	};
 
-	// Update popup position when popup data changes or map moves
+	// Update popup position when popup data changes, map moves, or AI data loads
 	useEffect(() => {
 		if (!popup || !mapRef.current) return;
 		
@@ -91,12 +189,27 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 			map.off('move', updatePosition);
 			map.off('zoom', updatePosition);
 		};
-	}, [popup, mapRef]);
+	}, [popup, mapRef, apiData]); // Added apiData to dependencies
 
-	// Auto-dismiss timer with progress
+	// Immediate repositioning when AI data loads (separate from map events)
 	useEffect(() => {
-		if (!popup || !popupVisible || isHovered) {
-			setTimeLeft(autoDismissMs); // Reset timer when hovered
+		if (!popup || !mapRef.current || !popupVisible) return;
+		
+		// Small delay to ensure DOM has updated with new content
+		const timeoutId = setTimeout(() => {
+			const map = mapRef.current!;
+			const clickPoint = map.project(popup.lngLat as any);
+			const position = calculatePopupPosition(clickPoint);
+			setPopupPosition(position);
+		}, 50);
+		
+		return () => clearTimeout(timeoutId);
+	}, [apiData.weather, apiData.crashAnalysis]); // Trigger specifically when AI data loads
+
+	// Auto-dismiss timer with progress - only starts after AI data is loaded
+	useEffect(() => {
+		if (!popup || !popupVisible || isHovered || !aiDataLoaded) {
+			setTimeLeft(autoDismissMs); // Reset timer when conditions aren't met
 			return;
 		}
 
@@ -114,7 +227,7 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 		}, interval);
 
 		return () => clearInterval(timer);
-	}, [popup, popupVisible, isHovered, onClose, autoDismissMs]);
+	}, [popup, popupVisible, isHovered, aiDataLoaded, onClose, autoDismissMs]);
 
 	if (!popup) return null;
 	const map = mapRef.current;
@@ -136,9 +249,20 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
 		>
-			<div className="mapbox-popup-inner" style={{ background: 'var(--surface-1)', color: 'var(--text-primary)', padding: 8, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', border: '1px solid var(--border-1)', minWidth: 200, maxWidth: 350, position: 'relative', overflow: 'hidden' }}>
-				{/* Auto-dismiss progress bar */}
-				{!isHovered && popupVisible && (
+			<div className="mapbox-popup-inner" style={{ 
+				background: 'var(--surface-1)', 
+				color: 'var(--text-primary)', 
+				padding: 8, 
+				borderRadius: 8, 
+				boxShadow: '0 8px 24px rgba(0,0,0,0.15)', 
+				border: '1px solid var(--border-1)', 
+				minWidth: 200, 
+				maxWidth: 350, 
+				maxHeight: '75vh', // Prevent popup from being too tall
+				position: 'relative'
+			}}>
+				{/* Auto-dismiss progress bar - only show after AI data is loaded */}
+				{!isHovered && popupVisible && aiDataLoaded && (
 					<div 
 						style={{
 							position: 'absolute',
@@ -153,12 +277,14 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 					/>
 				)}
 				
-				<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-					<div style={{ fontWeight: 700, fontSize: 14 }}>{popup.text ?? 'Details'}</div>
-					<button aria-label="Close popup" onClick={() => { onClose(); }} style={{ background: 'var(--surface-2)', border: 'none', padding: 8, marginLeft: 8, cursor: 'pointer', borderRadius: 4, color: 'var(--text-secondary)' }}>
-						✕
-					</button>
-				</div>
+				{/* Scrollable content container */}
+				<div style={{ maxHeight: 'calc(75vh - 40px)', overflowY: 'auto' }}>
+					<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+						<div style={{ fontWeight: 700, fontSize: 14 }}>{popup.text ?? 'Details'}</div>
+						<button aria-label="Close popup" onClick={() => { onClose(); }} style={{ background: 'var(--surface-2)', border: 'none', padding: 8, marginLeft: 8, cursor: 'pointer', borderRadius: 4, color: 'var(--text-secondary)' }}>
+							✕
+						</button>
+					</div>
 				{typeof popup.mag !== 'undefined' && <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>Magnitude:</strong> {popup.mag}</div>}
 				{popup.stats && popup.stats.count > 0 && (
 					<div style={{ marginTop: 6, fontSize: 13 }}>
@@ -215,7 +341,139 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, aut
 						No crash data found within {popup.stats.radiusMeters || 500}m of this location
 					</div>
 				)}
+
+				{/* API Data Section */}
+				{(apiLoading || apiData.weather || apiData.crashAnalysis || apiError) && (
+					<div style={{ marginTop: 12, borderTop: '1px solid var(--border-2)', paddingTop: 8 }}>
+						{apiLoading && (
+							<div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
+								<div style={{ 
+									width: 16, 
+									height: 16, 
+									border: '2px solid var(--border-3)', 
+									borderTop: '2px solid var(--text-primary)', 
+									borderRadius: '50%', 
+									animation: 'spin 1s linear infinite' 
+								}} />
+								Loading additional data...
+							</div>
+						)}
+
+						{apiError && (
+							<div style={{ 
+								fontSize: 12, 
+								color: '#dc3545', 
+								backgroundColor: '#ffeaea', 
+								padding: 6, 
+								borderRadius: 4, 
+								border: '1px solid #f5c6cb' 
+							}}>
+								⚠️ {apiError}
+							</div>
+						)}
+
+						{/* Weather Data */}
+						{apiData.weather && (
+							<div style={{ marginBottom: 8 }}>
+								<div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)', fontSize: 13 }}>
+									🌤️ Current Weather
+								</div>
+								<div style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+									{apiData.weather.summary && (
+										<div style={{ marginBottom: 4, fontStyle: 'italic' }}>
+											{apiData.weather.summary}
+										</div>
+									)}
+									{apiData.weather.description && (
+										<div>Conditions: {apiData.weather.description}</div>
+									)}
+									{apiData.weather.precipitation !== undefined && (
+										<div>Precipitation: {apiData.weather.precipitation} mm/h</div>
+									)}
+									{apiData.weather.windSpeed !== undefined && (
+										<div>Wind Speed: {apiData.weather.windSpeed} km/h</div>
+									)}
+									{apiData.weather.timeOfDay && (
+										<div>Time of Day: {apiData.weather.timeOfDay}</div>
+									)}
+								</div>
+							</div>
+						)}
+
+						{/* Crash Analysis */}
+						{apiData.crashAnalysis && (
+							<div>
+								<div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)', fontSize: 13 }}>
+									📊 AI Analysis
+								</div>
+								<div style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+									{apiData.crashAnalysis.riskLevel && (
+										<div style={{ 
+											marginBottom: 6,
+											padding: 6,
+											borderRadius: 4,
+											backgroundColor: apiData.crashAnalysis.riskLevel === 'high' ? '#ffeaea' : 
+															  apiData.crashAnalysis.riskLevel === 'medium' ? '#fff3cd' : '#d4edda',
+											color: apiData.crashAnalysis.riskLevel === 'high' ? '#721c24' : 
+												   apiData.crashAnalysis.riskLevel === 'medium' ? '#856404' : '#155724',
+											fontWeight: 600
+										}}>
+											Risk Level: {apiData.crashAnalysis.riskLevel.toUpperCase()}
+										</div>
+									)}
+									{apiData.crashAnalysis.recommendations && apiData.crashAnalysis.recommendations.length > 0 && (
+										<div>
+											<div style={{ fontWeight: 600, marginBottom: 3, fontSize: 12 }}>Key Recommendations:</div>
+											<div style={{ fontSize: 11, maxHeight: 120, overflowY: 'auto' }}>
+												{apiData.crashAnalysis.recommendations.slice(0, 4).map((rec: string, i: number) => (
+													<div key={i} style={{ marginBottom: 3, lineHeight: 1.3 }}>
+														• {rec}
+													</div>
+												))}
+											</div>
+										</div>
+									)}
+									
+									{/* View Details Button */}
+									<div style={{ marginTop: 8, textAlign: 'center' }}>
+										<button
+											onClick={() => onOpenModal?.({
+												weather: apiData.weather,
+												crashAnalysis: apiData.crashAnalysis,
+												coordinates: popup ? [popup.lngLat[0], popup.lngLat[1]] : undefined
+											})}
+											style={{
+												backgroundColor: 'var(--accent-primary)',
+												color: 'white',
+												border: 'none',
+												padding: '6px 12px',
+												borderRadius: 4,
+												fontSize: 11,
+												fontWeight: 600,
+												cursor: 'pointer',
+												width: '100%'
+											}}
+											onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-primary-hover)'}
+											onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-primary)'}
+										>
+											📊 View Full Analysis
+										</button>
+									</div>
+								</div>
+							</div>
+						)}
+					</div>
+				)}
+				</div> {/* Close scrollable container */}
 			</div>
+
+			{/* Add CSS for spinner animation */}
+			<style jsx>{`
+				@keyframes spin {
+					0% { transform: rotate(0deg); }
+					100% { transform: rotate(360deg); }
+				}
+			`}</style>
 		</div>
 	);
 }

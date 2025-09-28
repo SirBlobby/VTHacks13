@@ -6,7 +6,9 @@ import UnifiedControlPanel from './components/UnifiedControlPanel';
 import PopupOverlay from './components/PopupOverlay';
 import MapNavigationControl from './components/MapNavigationControl';
 import DirectionsSidebar from './components/DirectionsSidebar';
+import SafetyAnalysisModal from './components/SafetyAnalysisModal';
 import { useCrashData } from './hooks/useCrashData';
+import { WeatherData, CrashAnalysisData } from '../lib/flaskApi';
 
 export default function Home() {
 	const mapRef = useRef<any>(null);
@@ -20,6 +22,20 @@ export default function Home() {
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
 	const [isMapPickingMode, setIsMapPickingMode] = useState(false);
+	
+	// Modal state
+	const [modalOpen, setModalOpen] = useState(false);
+	const [modalData, setModalData] = useState<{
+		weather?: WeatherData;
+		crashAnalysis?: CrashAnalysisData;
+		coordinates?: [number, number];
+	}>({});
+	
+	// Handle modal opening
+	const handleOpenModal = (data: { weather?: WeatherData; crashAnalysis?: CrashAnalysisData; coordinates?: [number, number] }) => {
+		setModalData(data);
+		setModalOpen(true);
+	};
 	
 	// Shared crash data state - load all data for filtered year
 	const crashDataHook = useCrashData({ autoLoad: true });
@@ -70,8 +86,23 @@ export default function Home() {
 				{/* Native Mapbox navigation control (zoom + compass) */}
 				<MapNavigationControl mapRef={mapRef} position="top-right" />
 				
-				<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
+				<PopupOverlay 
+					popup={popup} 
+					popupVisible={popupVisible} 
+					mapRef={mapRef} 
+					onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} 
+					onOpenModal={handleOpenModal}
+				/>
 			</div>
+			
+			{/* Safety Analysis Modal - Rendered at page level */}
+			<SafetyAnalysisModal
+				isOpen={modalOpen}
+				onClose={() => setModalOpen(false)}
+				weatherData={modalData.weather}
+				crashAnalysis={modalData.crashAnalysis}
+				coordinates={modalData.coordinates}
+			/>
 		</div>
 	);
 }

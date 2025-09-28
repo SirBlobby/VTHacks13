@@ -2,21 +2,25 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sys
 import os
+import re
 import traceback
 from datetime import datetime
 import json
 from bson import ObjectId
 
-# Since we're now in llm/api/, we need to add the parent directory (llm) to Python path
+# Ensure repo root is on sys.path so local imports work whether this script
+# is run from the repo root or from inside the `llm/` folder.
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import our existing modules from the same llm directory
 try:
+    # These modules live in the `llm/` folder (not `llm/api/`), so import them
+    # as local modules when running this script directly.
     from gemini_mongo_mateo import (
-        connect_to_mongodb, 
-        get_crashes_within_radius_mongodb, 
-        analyze_mongodb_crash_patterns, 
-        get_current_weather
+        connect_to_mongodb,
+        get_crashes_within_radius_mongodb,
+        analyze_mongodb_crash_patterns,
+        get_current_weather,
     )
     from gemini_reroute_mateo import SafeRouteAnalyzer, MONGO_URI
     print("✅ Successfully imported Python modules")
@@ -143,6 +147,22 @@ def analyze_crashes_endpoint():
         safety_analysis = analyze_mongodb_crash_patterns(
             crashes, lat, lon, radius_km, weather_summary
         )
+        
+        # Remove markdown formatting from safety analysis
+        if safety_analysis:
+            # Remove markdown headers (### or **)
+            safety_analysis = re.sub(r'#+\s*', '', safety_analysis)
+            # Remove bold formatting (**)
+            safety_analysis = re.sub(r'\*\*([^*]+)\*\*', r'\1', safety_analysis)
+            # Remove italic formatting (*)
+            safety_analysis = re.sub(r'\*([^*]+)\*', r'\1', safety_analysis)
+            # Remove bullet points and clean up spacing
+            safety_analysis = re.sub(r'^\s*[\*\-\•]\s*', '', safety_analysis, flags=re.MULTILINE)
+            # Clean up multiple newlines
+            safety_analysis = re.sub(r'\n\s*\n', '\n\n', safety_analysis)
+            # Clean up extra spaces
+            safety_analysis = re.sub(r'\s+', ' ', safety_analysis)
+            safety_analysis = safety_analysis.strip()
         
         # Calculate some basic statistics
         total_crashes = len(crashes)
