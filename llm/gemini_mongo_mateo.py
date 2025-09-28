@@ -275,24 +275,45 @@ VEHICLE INVOLVEMENT: {dict(crash_analysis['vehicle_counts'])}"""
 CURRENT WEATHER CONDITIONS:
 {weather_summary}"""
     
+    # Determine safety level based on crash data
+    total_casualties = (crash_analysis['total_fatalities'] + 
+                       crash_analysis['total_major_injuries'] + 
+                       crash_analysis['total_minor_injuries'])
+    
+    # Calculate risk factors
+    high_risk_factors = (crash_analysis['speeding_involved'] + 
+                        crash_analysis['impaired_involved'] + 
+                        crash_analysis['pedestrian_crashes'] + 
+                        crash_analysis['bicyclist_crashes'])
+    
+    # Determine safety level
+    if total_crashes == 0:
+        safety_level = "SAFE"
+    elif total_crashes <= 5 and total_casualties <= 3:
+        safety_level = "LOW RISK"
+    elif total_crashes <= 15 and total_casualties <= 10:
+        safety_level = "MODERATE RISK"
+    elif total_crashes <= 30 or total_casualties <= 25:
+        safety_level = "HIGH RISK"
+    else:
+        safety_level = "DANGEROUS"
+
+    weather_info = f" Current weather: {weather_summary}." if weather_summary else ""
+
     # Create prompt for LLM
-    prompt = f"""You are a traffic safety expert analyzing recent crash data (2020 onward) and current conditions for location ({center_lat:.6f}, {center_lon:.6f}) within a {radius_km}km radius.
-    
-    CRASH STATISTICS (2020-Present):
-    - Total crashes in area: {total_crashes}
-    - Average distance from center: {avg_distance:.2f} km
-    - Search area: {radius_km}km radius (approximately {3.14159 * radius_km**2:.1f} km²)
-    
-    DETAILED CRASH ANALYSIS:{crash_summary}{weather_info}
-    
-    Based on this comprehensive recent MongoDB crash data (2020 onward), provide:
-    1. A danger level assessment (Low, Moderate, High, Very High)
-    2. Key safety concerns based on recent crash patterns AND current weather conditions
-    3. Specific recommendations for someone traveling to this location RIGHT NOW
-    4. Notable patterns in recent crash data (severity, vulnerable users, risk factors)
-    5. How current weather conditions may affect driving safety
-    
-    Focus on practical, actionable safety advice based on recent trends. Be specific about identified risks and provide clear recommendations."""
+    prompt = f"""Analyze crash safety for location ({center_lat:.4f}, {center_lon:.4f}) within {radius_km}km radius.
+
+CRASH DATA (2020+): {total_crashes} crashes, {total_casualties} casualties
+FATALITIES: {crash_analysis['total_fatalities']} fatal, {crash_analysis['total_major_injuries']} major, {crash_analysis['total_minor_injuries']} minor
+RISK FACTORS: {crash_analysis['speeding_involved']} speeding, {crash_analysis['impaired_involved']} impairment, {crash_analysis['pedestrian_crashes']} pedestrian, {crash_analysis['bicyclist_crashes']} bicyclist{weather_info}
+
+Provide a brief summary with:
+• Safety Assessment: {safety_level}
+• Key Risks (2-3 bullet points max)
+• Safety Tips (2-3 bullet points max)
+• Weather Considerations (if applicable)
+
+Keep it concise and actionable."""
     
     try:
         response = llm.invoke(prompt)

@@ -148,20 +148,18 @@ def analyze_crashes_endpoint():
             crashes, lat, lon, radius_km, weather_summary
         )
         
-        # Remove markdown formatting from safety analysis
+        # Clean up safety analysis text but preserve bullet points
         if safety_analysis:
             # Remove markdown headers (### or **)
             safety_analysis = re.sub(r'#+\s*', '', safety_analysis)
-            # Remove bold formatting (**)
+            # Remove bold formatting (**) but preserve content
             safety_analysis = re.sub(r'\*\*([^*]+)\*\*', r'\1', safety_analysis)
-            # Remove italic formatting (*)
-            safety_analysis = re.sub(r'\*([^*]+)\*', r'\1', safety_analysis)
-            # Remove bullet points and clean up spacing
-            safety_analysis = re.sub(r'^\s*[\*\-\•]\s*', '', safety_analysis, flags=re.MULTILINE)
-            # Clean up multiple newlines
-            safety_analysis = re.sub(r'\n\s*\n', '\n\n', safety_analysis)
-            # Clean up extra spaces
-            safety_analysis = re.sub(r'\s+', ' ', safety_analysis)
+            # Preserve bullet points (• or *) but clean up spacing
+            safety_analysis = re.sub(r'^\s*[\*]\s*', '• ', safety_analysis, flags=re.MULTILINE)
+            # Clean up multiple newlines but preserve structure
+            safety_analysis = re.sub(r'\n\s*\n\s*\n', '\n\n', safety_analysis)
+            # Clean up extra spaces within lines
+            safety_analysis = re.sub(r'[ \t]+', ' ', safety_analysis)
             safety_analysis = safety_analysis.strip()
         
         # Calculate some basic statistics
