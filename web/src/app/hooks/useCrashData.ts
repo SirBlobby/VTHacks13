@@ -36,7 +36,8 @@ export function useCrashData(options: UseCrashDataOptions = {}): UseCrashDataRes
 
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: limit.toString(),
+        // When year filter is active, request all data by setting a high limit
+        limit: yearFilter ? '100000' : limit.toString(),
       });
       
       if (yearFilter) {
@@ -51,10 +52,11 @@ export function useCrashData(options: UseCrashDataOptions = {}): UseCrashDataRes
 
       const result: CrashResponse = await response.json();
       
-      if (append) {
-        setData(prevData => [...prevData, ...result.data]);
-      } else {
+      // When year filter is active, always replace data (don't append)
+      if (yearFilter || !append) {
         setData(result.data);
+      } else {
+        setData(prevData => [...prevData, ...result.data]);
       }
       
       setPagination(result.pagination);

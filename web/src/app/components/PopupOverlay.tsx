@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import type { PopupData } from './MapView';
 
@@ -9,23 +9,150 @@ interface Props {
 	popupVisible: boolean;
 	mapRef: React.MutableRefObject<mapboxgl.Map | null>;
 	onClose: () => void;
+	autoDismissMs?: number; // Auto-dismiss timeout in milliseconds, default 5000 (5 seconds)
 }
 
-export default function PopupOverlay({ popup, popupVisible, mapRef, onClose }: Props) {
+export default function PopupOverlay({ popup, popupVisible, mapRef, onClose, autoDismissMs = 5000 }: Props) {
+	const [isHovered, setIsHovered] = useState(false);
+	const [timeLeft, setTimeLeft] = useState(autoDismissMs);
+	const [popupPosition, setPopupPosition] = useState({ left: 0, top: 0, transform: 'translate(-50%, -100%)', arrowPosition: 'bottom' });
+
+	// Calculate smart popup positioning
+	const calculatePopupPosition = (clickPoint: mapboxgl.Point) => {
+		if (typeof window === 'undefined') return { 
+			left: clickPoint.x, 
+			top: clickPoint.y, 
+			transform: 'translate(-50%, -100%)',
+			arrowPosition: 'bottom'
+		};
+		
+		const viewportWidth = window.innerWidth;
+		const viewportHeight = window.innerHeight;
+		const popupWidth = 350; // max-width from styles
+		const popupHeight = 200; // estimated height
+		const padding = 20; // padding from screen edges
+		
+		let left = clickPoint.x;
+		let top = clickPoint.y;
+		let transform = '';
+		let arrowPosition = 'bottom'; // where the arrow points (bottom = popup is above click)
+		
+		// Determine horizontal position
+		if (clickPoint.x + popupWidth / 2 + padding > viewportWidth) {
+			// Position to the left of cursor
+			left = clickPoint.x - 10;
+			transform = 'translateX(-100%)';
+			arrowPosition = 'right';
+		} else if (clickPoint.x - popupWidth / 2 < padding) {
+			// Position to the right of cursor
+			left = clickPoint.x + 10;
+			transform = 'translateX(0%)';
+			arrowPosition = 'left';
+		} else {
+			// Center horizontally
+			left = clickPoint.x;
+			transform = 'translateX(-50%)';
+		}
+		
+		// Determine vertical position
+		if (clickPoint.y - popupHeight - padding < 0) {
+			// Position below cursor
+			top = clickPoint.y + 10;
+			transform += ' translateY(0%)';
+			arrowPosition = arrowPosition === 'bottom' ? 'top' : arrowPosition;
+		} else {
+			// Position above cursor (default)
+			top = clickPoint.y - 10;
+			transform += ' translateY(-100%)';
+		}
+		
+		return { left, top, transform, arrowPosition };
+	};
+
+	// Update popup position when popup data changes or map moves
+	useEffect(() => {
+		if (!popup || !mapRef.current) return;
+		
+		const map = mapRef.current;
+		const updatePosition = () => {
+			const clickPoint = map.project(popup.lngLat as any);
+			const position = calculatePopupPosition(clickPoint);
+			setPopupPosition(position);
+		};
+		
+		// Update position initially
+		updatePosition();
+		
+		// Update position when map moves or zooms
+		map.on('move', updatePosition);
+		map.on('zoom', updatePosition);
+		
+		return () => {
+			map.off('move', updatePosition);
+			map.off('zoom', updatePosition);
+		};
+	}, [popup, mapRef]);
+
+	// Auto-dismiss timer with progress
+	useEffect(() => {
+		if (!popup || !popupVisible || isHovered) {
+			setTimeLeft(autoDismissMs); // Reset timer when hovered
+			return;
+		}
+
+		const interval = 50; // Update every 50ms for smooth progress
+		const timer = setInterval(() => {
+			setTimeLeft((prev) => {
+				const newValue = prev - interval;
+				if (newValue <= 0) {
+					// Schedule onClose to run after the state update completes
+					setTimeout(() => onClose(), 0);
+					return 0;
+				}
+				return newValue;
+			});
+		}, interval);
+
+		return () => clearInterval(timer);
+	}, [popup, popupVisible, isHovered, onClose, autoDismissMs]);
+
 	if (!popup) return null;
 	const map = mapRef.current;
 	if (!map) return null;
-
-	const p = map.project(popup.lngLat as any);
 
 	return (
 		<div
 			role="dialog"
 			aria-label="Feature details"
 			className={`custom-popup ${popupVisible ? 'visible' : ''}`}
-			style={{ position: 'absolute', left: Math.round(p.x), top: Math.round(p.y), transform: 'translate(-50%, -100%)', pointerEvents: popupVisible ? 'auto' : 'none' }}
+			style={{ 
+				position: 'absolute', 
+				left: Math.round(popupPosition.left), 
+				top: Math.round(popupPosition.top), 
+				transform: popupPosition.transform, 
+				pointerEvents: popupVisible ? 'auto' : 'none',
+				zIndex: 1000 
+			}}
+			onMouseEnter={() => setIsHovered(true)}
+			onMouseLeave={() => setIsHovered(false)}
 		>
-			<div className="mapbox-popup-inner" style={{ background: 'var(--surface-1)', color: 'var(--text-primary)', padding: 8, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', border: '1px solid var(--border-1)', minWidth: 200, maxWidth: 350 }}>
+			<div className="mapbox-popup-inner" style={{ background: 'var(--surface-1)', color: 'var(--text-primary)', padding: 8, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', border: '1px solid var(--border-1)', minWidth: 200, maxWidth: 350, position: 'relative', overflow: 'hidden' }}>
+				{/* Auto-dismiss progress bar */}
+				{!isHovered && popupVisible && (
+					<div 
+						style={{
+							position: 'absolute',
+							top: 0,
+							left: 0,
+							height: 2,
+							backgroundColor: '#0066cc',
+							width: `${(timeLeft / autoDismissMs) * 100}%`,
+							transition: 'width 50ms linear',
+							zIndex: 1
+						}}
+					/>
+				)}
+				
 				<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
 					<div style={{ fontWeight: 700, fontSize: 14 }}>{popup.text ?? 'Details'}</div>
 					<button aria-label="Close popup" onClick={() => { onClose(); }} style={{ background: 'var(--surface-2)', border: 'none', padding: 8, marginLeft: 8, cursor: 'pointer', borderRadius: 4, color: 'var(--text-secondary)' }}>
@@ -38,11 +165,6 @@ export default function PopupOverlay({ popup, popupVisible, mapRef, onClose }: P
 						<div style={{ fontWeight: 600, color: '#0066cc', marginBottom: 4 }}>
 							📍 {popup.stats.count} crashes within {popup.stats.radiusMeters}m radius
 						</div>
-						{popup.stats.avg !== undefined && (
-							<div style={{ marginBottom: 4, color: 'var(--text-secondary)' }}>
-								<strong style={{ color: 'var(--text-primary)' }}>Severity Score:</strong> Avg {popup.stats.avg} (Min: {popup.stats.min}, Max: {popup.stats.max})
-							</div>
-						)}
 						{popup.stats.severityCounts && (
 							<div style={{ marginTop: 6 }}>
 								<div style={{ fontWeight: 600, marginBottom: 2, color: 'var(--text-primary)' }}>Severity Breakdown:</div>

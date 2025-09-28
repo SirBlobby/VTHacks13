@@ -6,7 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { generateDCPoints, haversine, PointFeature, convertCrashDataToGeoJSON } from '../lib/mapUtils';
-import { useCrashData } from '../hooks/useCrashData';
+import { useCrashData, UseCrashDataResult } from '../hooks/useCrashData';
 import { CrashData } from '../api/crashes/route';
 
 export type PopupData = { 
@@ -41,6 +41,8 @@ interface MapViewProps {
 	onGeocoderResult?: (lngLat: [number, number]) => void;
 	useRealCrashData?: boolean; // whether to use real crash data or synthetic data
 	crashData?: CrashData[]; // external crash data to use
+	crashDataHook?: UseCrashDataResult; // the crash data hook from main page
+	isMapPickingMode?: boolean; // whether map is in picking mode (prevents popups)
 }
 
 export default function MapView({ 
@@ -53,20 +55,29 @@ export default function MapView({
 	onPopupCreate, 
 	onGeocoderResult, 
 	useRealCrashData = true,
-	crashData = []
+	crashData = [],
+	crashDataHook,
+	isMapPickingMode = false
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<mapboxgl.Map | null>(null);
 	const styleChoiceRef = useRef<'dark' | 'streets'>(mapStyleChoice);
+	const isMapPickingModeRef = useRef<boolean>(isMapPickingMode);
 	const [size, setSize] = useState({ width: 0, height: 0 });
 	const dcDataRef = useRef<GeoJSON.FeatureCollection | null>(null);
-	const crashDataHook = useCrashData({ autoLoad: false, limit: 10000 }); // Don't auto-load if external data provided
+	const internalCrashDataHook = useCrashData({ autoLoad: false, limit: 10000 }); // Don't auto-load if external data provided
+
+	// Update isMapPickingMode ref when prop changes
+	useEffect(() => {
+		isMapPickingModeRef.current = isMapPickingMode;
+	}, [isMapPickingMode]);
 
 	// Update map data when crash data is loaded
 	useEffect(() => {
-		const activeData = crashData.length > 0 ? crashData : crashDataHook.data;
-		console.log('MapView useEffect: crashData.length =', crashData.length, 'crashDataHook.data.length =', crashDataHook.data.length);
+		const currentCrashDataHook = crashDataHook || internalCrashDataHook;
+		const activeData = crashData.length > 0 ? crashData : currentCrashDataHook.data;
+		console.log('MapView useEffect: crashData.length =', crashData.length, 'crashDataHook.data.length =', currentCrashDataHook.data.length);
 		if (useRealCrashData && activeData.length > 0) {
 			console.log('Converting crash data to GeoJSON...');
 			dcDataRef.current = convertCrashDataToGeoJSON(activeData);
@@ -88,7 +99,7 @@ export default function MapView({
 						// Add layers if they don't exist
 						if (!map.getLayer('dc-heat')) {
 							map.addLayer({
-								id: 'dc-heat', type: 'heatmap', source: 'dc-quakes', maxzoom: 15,
+								id: 'dc-heat', type: 'heatmap', source: 'dc-quakes',
 								paint: {
 									'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 6, 1],
 									'heatmap-intensity': heatIntensity,
@@ -140,7 +151,7 @@ export default function MapView({
 				console.log('Map style not loaded yet');
 			}
 		}
-	}, [useRealCrashData, crashDataHook.data, crashData, heatRadius, heatIntensity, heatVisible, pointsVisible]);
+	}, [useRealCrashData, crashDataHook?.data, crashData, heatRadius, heatIntensity, heatVisible, pointsVisible]);
 
 	useEffect(() => {
 		const el = containerRef.current;
@@ -216,7 +227,8 @@ export default function MapView({
 		// The sidebar provides embedded geocoder inputs; keeping both leads to duplicate controls.
 
 		// Initialize data based on preference
-		const activeData = crashData.length > 0 ? crashData : crashDataHook.data;
+		const currentCrashDataHook = crashDataHook || internalCrashDataHook;
+		const activeData = crashData.length > 0 ? crashData : currentCrashDataHook.data;
 		console.log('Initializing map data, activeData length:', activeData.length);
 		if (useRealCrashData && activeData.length > 0) {
 			console.log('Using real crash data');
@@ -232,11 +244,61 @@ export default function MapView({
 		const computeNearbyStats = async (center: [number, number], radiusMeters = 300) => {
 			try {
 				const [lng, lat] = center;
+				
+				// Use the already filtered crash data instead of making a new API call
+				// Check both crashData prop and crashDataHook data
+				const currentCrashDataHook = crashDataHook || internalCrashDataHook;
+				const activeData = (crashData && crashData.length > 0) ? crashData : 
+								  (currentCrashDataHook.data && currentCrashDataHook.data.length > 0) ? currentCrashDataHook.data : 
+								  null;
+				
+				if (activeData && activeData.length > 0) {
+					
+					// Filter crashes within the radius using Haversine formula
+					const nearbyCrashes = activeData.filter((crash: any) => {
+						if (!crash) {
+							return false;
+						}
+						
+						// Check for different possible property names for coordinates
+						const crashLat = crash.latitude || crash.lat;
+						const crashLng = crash.longitude || crash.lng || crash.lon;
+						
+						if (typeof crashLat !== 'number' || typeof crashLng !== 'number') {
+							return false;
+						}
+						
+						const distance = calculateDistance(lat, lng, crashLat, crashLng);
+						return distance <= radiusMeters;
+					});
+					
+					if (nearbyCrashes.length === 0) {
+						return { count: 0, radiusMeters };
+					}
+					
+					// Count by severity type using filtered data
+					const severityCounts = {
+						fatal: nearbyCrashes.filter((c: any) => c.severity === 'Fatal').length,
+						majorInjury: nearbyCrashes.filter((c: any) => c.severity === 'Major Injury').length,
+						minorInjury: nearbyCrashes.filter((c: any) => c.severity === 'Minor Injury').length,
+						propertyOnly: nearbyCrashes.filter((c: any) => c.severity === 'Property Damage Only').length
+					};
+					
+					return { 
+						count: nearbyCrashes.length, 
+						radiusMeters,
+						severityCounts,
+						crashes: nearbyCrashes.slice(0, 5)
+					};
+				}
+				
+				// If no client-side data available, fall back to API call (but this should not happen now)
+				console.log('FALLBACK: No filtered data available, using API call');
 				const response = await fetch(`/api/crashes/nearby?lng=${lng}&lat=${lat}&radius=${radiusMeters}&limit=1000`);
 				
 				if (!response.ok) {
 					console.warn('Failed to fetch nearby crash data:', response.status);
-					return { count: 0 };
+					return { count: 0, radiusMeters };
 				}
 				
 				const data = await response.json();
@@ -258,24 +320,6 @@ export default function MapView({
 					return { count: 0, radiusMeters };
 				}
 				
-				// Calculate severity statistics from MongoDB data
-				const severityValues = validCrashes.map((crash: any) => {
-					// Convert severity to numeric value for stats
-					switch (crash.severity) {
-						case 'Fatal': return 6;
-						case 'Major Injury': return 4;
-						case 'Minor Injury': return 2;
-						case 'Property Damage Only': return 1;
-						default: return 1;
-					}
-				});
-				
-				// Calculate statistics
-				const sum = severityValues.reduce((s: number, x: number) => s + x, 0);
-				const avg = +(sum / severityValues.length).toFixed(2);
-				const min = Math.min(...severityValues);
-				const max = Math.max(...severityValues);
-				
 				// Count by severity type
 				const severityCounts = {
 					fatal: validCrashes.filter((c: any) => c.severity === 'Fatal').length,
@@ -286,17 +330,30 @@ export default function MapView({
 				
 				return { 
 					count: validCrashes.length, 
-					avg, 
-					min, 
-					max, 
 					radiusMeters,
 					severityCounts,
-					crashes: validCrashes.slice(0, 5) // Include first 5 crashes for detailed info
+					crashes: validCrashes.slice(0, 5)
 				};
 			} catch (error) {
 				console.error('Error computing nearby stats:', error);
 				return { count: 0 };
 			}
+		};
+		
+		// Helper function to calculate distance between two coordinates using Haversine formula
+		const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+			const R = 6371e3; // Earth's radius in meters
+			const φ1 = lat1 * Math.PI / 180;
+			const φ2 = lat2 * Math.PI / 180;
+			const Δφ = (lat2 - lat1) * Math.PI / 180;
+			const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+			const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+					Math.cos(φ1) * Math.cos(φ2) *
+					Math.sin(Δλ/2) * Math.sin(Δλ/2);
+			const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+			return R * c; // Distance in meters
 		};
 
 		const addDataAndLayers = () => {
@@ -317,7 +374,7 @@ export default function MapView({
 
 			if (!map.getLayer('dc-heat')) {
 				map.addLayer({
-					id: 'dc-heat', type: 'heatmap', source: 'dc-quakes', maxzoom: 15,
+					id: 'dc-heat', type: 'heatmap', source: 'dc-quakes',
 					paint: {
 						'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 6, 1],
 						'heatmap-intensity': heatIntensity,
@@ -375,6 +432,10 @@ export default function MapView({
 			try { map.fitBounds(dcBounds, { padding: 20 }); } catch (e) { /* ignore if fitBounds fails */ }
 
 			map.on('click', 'dc-point', async (e) => {
+				if (isMapPickingModeRef.current) {
+					return;
+				}
+				
 				const feature = e.features && e.features[0];
 				if (!feature) return;
 				
@@ -403,10 +464,14 @@ Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + 
 Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 				}
 				
-				if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 			});
 
 			map.on('click', 'dc-heat', async (e) => {
+				if (isMapPickingModeRef.current) {
+					return;
+				}
+				
 				const p = e.point;
 				const bbox = [[p.x - 6, p.y - 6], [p.x + 6, p.y + 6]] as [mapboxgl.PointLike, mapboxgl.PointLike];
 				const nearby = map.queryRenderedFeatures(bbox, { layers: ['dc-point'] });
@@ -421,7 +486,7 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 					    coords[0] === 0 || coords[1] === 0) {
 						console.warn('Invalid coordinates for heat map click:', coords);
 						const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
-						if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
+						if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
 						return;
 					}
 					
@@ -439,10 +504,10 @@ Fatalities: ${(crashData.fatalDriver || 0) + (crashData.fatalPedestrian || 0) + 
 Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjuriesPedestrian || 0) + (crashData.majorInjuriesBicyclist || 0)}`;
 					}
 					
-					if (onPopupCreate) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: coords, mag, crashData, text, stats });
 				} else {
 					const stats = await computeNearbyStats([e.lngLat.lng, e.lngLat.lat], 300);
-					if (onPopupCreate) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
+					if (onPopupCreate && !isMapPickingMode) onPopupCreate({ lngLat: [e.lngLat.lng, e.lngLat.lat], text: 'Zoom in to see individual crash reports and details', stats });
 				}
 			});
 
@@ -478,7 +543,7 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 					detailedText = `Detailed Analysis - ${crashData.address}`;
 				}
 				
-				if (onPopupCreate) onPopupCreate({ 
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 					lngLat: coords, 
 					crashData,
 					text: detailedText, 
@@ -495,15 +560,49 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 				// Get comprehensive stats for the clicked location
 				const stats = await computeNearbyStats(coords, 500); // 500m radius
 				
-				if (onPopupCreate) onPopupCreate({ 
+				if (onPopupCreate && !isMapPickingMode) onPopupCreate({ 
 					lngLat: coords, 
 					text: 'Area Crash Analysis', 
 					stats 
 				});
 			});
 
+			// General map click for any location (not just double-click)
+			map.on('click', async (e) => {
+				// Skip if in map picking mode
+				if (isMapPickingModeRef.current) {
+					return;
+				}
+				
+				// Only trigger if not clicking on a feature
+				const features = map.queryRenderedFeatures(e.point, { layers: ['dc-point', 'dc-heat'] });
+				if (features.length > 0) return; // Already handled by feature-specific handlers
+				
+				const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+				
+				// Get stats for any location on the map
+				const stats = await computeNearbyStats(coords, 300); // 300m radius for general clicks
+				
+				if (stats.count > 0) {
+					if (onPopupCreate) onPopupCreate({ 
+						lngLat: coords, 
+						text: 'Location Analysis', 
+						stats 
+					});
+				} else {
+					if (onPopupCreate) onPopupCreate({ 
+						lngLat: coords, 
+						text: 'No crashes found in this area', 
+						stats: { count: 0, radiusMeters: 600 }
+					});
+				}
+			});
+
 			// General map double-click for any location
 			map.on('dblclick', async (e) => {
+				// Skip if in map picking mode
+				if (isMapPickingModeRef.current) return;
+				
 				// Only trigger if not clicking on a feature
 				const features = map.queryRenderedFeatures(e.point, { layers: ['dc-point', 'dc-heat'] });
 				if (features.length > 0) return; // Already handled by feature-specific handlers
@@ -546,6 +645,8 @@ Major Injuries: ${(crashData.majorInjuriesDriver || 0) + (crashData.majorInjurie
 			}
 		};
 	}, []);
+
+
 
 	// update visibility & paint when props change
 	useEffect(() => {

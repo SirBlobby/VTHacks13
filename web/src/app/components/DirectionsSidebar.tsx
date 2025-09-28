@@ -9,11 +9,12 @@ import { calculateRouteCrashDensity, createRouteGradientStops } from '../lib/map
 interface Props {
   mapRef: React.MutableRefObject<mapboxgl.Map | null>;
   profile?: "mapbox/driving" | "mapbox/walking" | "mapbox/cycling";
+  onMapPickingModeChange?: (isActive: boolean) => void; // callback when map picking mode changes
 }
 
 // Routing now uses geocoder-only selection inside the sidebar (no manual coordinate parsing)
 
-export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }: Props) {
+export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", onMapPickingModeChange }: Props) {
   // Sidebar supports collapse via a hamburger button in the header
   const [collapsed, setCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -46,6 +47,13 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Notify parent when map picking mode changes
+  useEffect(() => {
+    if (onMapPickingModeChange) {
+      onMapPickingModeChange(isOriginMapPicking || isDestMapPicking);
+    }
+  }, [isOriginMapPicking, isDestMapPicking, onMapPickingModeChange]);
+
   // Handle map clicks for point selection
   useEffect(() => {
     const map = mapRef.current;
@@ -55,19 +63,31 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving" }
       const { lng, lat } = e.lngLat;
       
       if (isOriginMapPicking) {
+        // Prevent other map click handlers from running
+        if (e.originalEvent) {
+          e.originalEvent.stopPropagation();
+          e.originalEvent.stopImmediatePropagation();
+        }
         setOriginCoord([lng, lat]);
         setOriginText(`Selected: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         setOriginQuery(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         setIsOriginMapPicking(false);
         // Center map on selected point
         map.easeTo({ center: [lng, lat], zoom: 14 });
+        return;
       } else if (isDestMapPicking) {
+        // Prevent other map click handlers from running
+        if (e.originalEvent) {
+          e.originalEvent.stopPropagation();
+          e.originalEvent.stopImmediatePropagation();
+        }
         setDestCoord([lng, lat]);
         setDestText(`Selected: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         setDestQuery(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
         setIsDestMapPicking(false);
         // Center map on selected point
         map.easeTo({ center: [lng, lat], zoom: 14 });
+        return;
       }
     };
 

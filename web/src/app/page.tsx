@@ -4,7 +4,6 @@ import React, { useRef, useState } from 'react';
 import MapView, { PopupData } from './components/MapView';
 import ControlsPanel from './components/ControlsPanel';
 import PopupOverlay from './components/PopupOverlay';
-import Legend from './components/Legend';
 import MapNavigationControl from './components/MapNavigationControl';
 import DirectionsSidebar from './components/DirectionsSidebar';
 import CrashDataControls from './components/CrashDataControls';
@@ -22,16 +21,21 @@ export default function Home() {
 	});
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
+	const [isMapPickingMode, setIsMapPickingMode] = useState(false);
 	
-	// Shared crash data state
-	const crashDataHook = useCrashData({ autoLoad: true, limit: 10000 });
+	// Shared crash data state - load all data for filtered year
+	const crashDataHook = useCrashData({ autoLoad: true });
 
 	return (
 		<div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row' }}>
 			<div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
 				{/* Render sidebar as an overlay inside the map container so collapsing doesn't shift layout */}
 				<div style={{ position: 'absolute', left: 0, top: 0, height: '100%', zIndex: 40, pointerEvents: 'auto' }}>
-					<DirectionsSidebar mapRef={mapRef} profile="mapbox/driving" />
+					<DirectionsSidebar 
+						mapRef={mapRef} 
+						profile="mapbox/driving" 
+						onMapPickingModeChange={setIsMapPickingMode}
+					/>
 				</div>
 				<ControlsPanel
 					panelOpen={panelOpen}
@@ -56,6 +60,8 @@ export default function Home() {
 					pointsVisible={pointsVisible}
 					useRealCrashData={true}
 					crashData={crashDataHook.data}
+					crashDataHook={crashDataHook}
+					isMapPickingMode={isMapPickingMode}
 					onMapReady={(m) => { mapRef.current = m; }}
 					onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
 				/>
@@ -63,10 +69,8 @@ export default function Home() {
 				{/* Native Mapbox navigation control (zoom + compass) */}
 				<MapNavigationControl mapRef={mapRef} position="top-right" />
 				
-				{/* Crash data loading controls */}
+				{/* Crash data loading controls with integrated crash density legend */}
 				<CrashDataControls crashDataHook={crashDataHook} />
-
-				<Legend />
 				<PopupOverlay popup={popup} popupVisible={popupVisible} mapRef={mapRef} onClose={() => { setPopupVisible(false); setTimeout(() => setPopup(null), 220); }} />
 			</div>
 		</div>
