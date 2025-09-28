@@ -1,0 +1,50 @@
+✅ Successfully imported Python modules
+✅ Connected to MongoDB for route safety analysis
+Connecting to MongoDB...
+✅ Successfully connected to MongoDB!
+📊 Found 337,113 total crash records in database
+📅 Found 112,964 crash records from 2020 onward
+🚀 Starting Flask API Server...
+📡 Endpoints available:
+   - GET  /api/health
+   - GET  /api/weather?lat=X&lon=Y
+   - POST /api/analyze-crashes
+   - POST /api/find-safe-route
+   - POST /api/get-single-route
+
+🌐 Server running on http://localhost:5001
+ * Serving Flask app 'flask_server'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://100.110.69.195:5001
+Press CTRL+C to quit
+ * Restarting with watchdog (fsevents)
+ * Debugger is active!
+ * Debugger PIN: 649-846-112
+127.0.0.1 - - [28/Sep/2025 01:55:17] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [28/Sep/2025 01:55:22] "POST /api/analyze-crashes HTTP/1.1" 400 -
+ * Detected change in '/Users/shivapochampally/Documents/competitions/VTHacks13/llm/api/flask_server.py', reloading
+ * Detected change in '/Users/shivapochampally/Documents/competitions/VTHacks13/llm/api/flask_server.py', reloading
+✅ Successfully imported Python modules
+✅ Connected to MongoDB for route safety analysis
+Connecting to MongoDB...
+✅ Successfully connected to MongoDB!
+📊 Found 337,113 total crash records in database
+📅 Found 112,964 crash records from 2020 onward
+🚀 Starting Flask API Server...
+📡 Endpoints available:
+   - GET  /api/health
+   - GET  /api/weather?lat=X&lon=Y
+   - POST /api/analyze-crashes
+   - POST /api/find-safe-route
+   - POST /api/get-single-route
+
+🌐 Server running on http://localhost:5001
+🔍 Analyzing crashes at (38.9072, -77.0369) within 1.0km...
+🔍 Querying crashes within 1.0km of (38.907200, -77.036900) from 2020 onward...
+📍 Found 5944 crashes within 1.0km radius (from 2020 onward)
+ * Restarting with watchdog (fsevents)
+ * Debugger is active!
+ * Debugger PIN: 649-846-112
