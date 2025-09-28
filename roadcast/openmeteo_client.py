@@ -294,46 +294,41 @@ def compute_reroute(
 		"grid_shape": (n_lat, n_lon)
 	}
 
+def compute_index(lat: float,
+                  lon: float,
+                  max_risk: float = 10.0,
+                  num_bins: int = 10,
+                  risk_provider: Optional[Callable[[float, float], float]] = None) -> int:
+    """
+    Computes and returns an index based on road risk and accident information.
+    
+    Args:
+        lat: Latitude of the location.
+        lon: Longitude of the location.
+        max_risk: Maximum possible road risk score.
+        num_bins: Number of bins to divide the risk range into.
+        reroute_kwargs: Optional dictionary passed to reroute logic.
+        risk_provider: Optional custom risk provider function.
 
-def compute_index_and_reroute(lat: float,
-                              lon: float,
-                              api_key: Optional[str] = None,
-                              roadrisk_url: Optional[str] = None,
-                              max_risk: float = 10.0,
-                              num_bins: int = 10,
-                              reroute_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-	"""
-	Get road risk, map to index (1..num_bins), and attempt reroute.
-	reroute_kwargs forwarded to compute_reroute.
-	api_key/roadrisk_url accepted for compatibility but ignored by Open-Meteo implementation.
-	"""
-	if reroute_kwargs is None:
-		reroute_kwargs = {}
+    Returns:
+        An integer index (1 to num_bins) based on computed road risk.
+    """
+    # If a risk provider is not provided, use a default one
+    if risk_provider is None:
+        risk_provider = lambda lat, lon: get_risk_score(lat, lon)
 
-	data, features = fetch_road_risk(lat, lon, extra_params=reroute_kwargs, api_key=api_key, roadrisk_url=roadrisk_url)
-	road_risk = float(features.get("road_risk_score", 0.0))
+    # Fetch road risk score using the provided risk provider
+    road_risk = float(risk_provider(lat, lon))
+    
+    # Compute the index based on road risk score and the max_risk, num_bins parameters
+    # The formula will divide the risk score into `num_bins` bins
+    # The index will be a number between 1 and num_bins based on the risk score
 
-	accidents = features.get("accidents") or features.get("accident_count")
-	try:
-		if accidents is not None:
-			# fallback: map accident count to index if present
-			from .models import accidents_to_bucket  # may not exist; wrapped in try
-			idx = accidents_to_bucket(int(accidents), max_count=20000, num_bins=num_bins)
-		else:
-			idx = risk_to_index(road_risk, max_risk=max_risk, num_bins=num_bins)
-	except Exception:
-		idx = risk_to_index(road_risk, max_risk=max_risk, num_bins=num_bins)
+    # Normalize the risk score to be between 0 and max_risk
+    normalized_risk = min(road_risk, max_risk) / max_risk
 
-	def _rp(lat_, lon_):
-		return get_risk_score(lat_, lon_, api_key=api_key, roadrisk_url=roadrisk_url)
+    # Compute the index based on the normalized risk score
+    index = int(normalized_risk * num_bins)
 
-	reroute_info = compute_reroute(lat, lon, risk_provider=_rp, **reroute_kwargs)
-	return {
-		"lat": lat,
-		"lon": lon,
-		"index": int(idx),
-		"road_risk_score": road_risk,
-		"features": features,
-		"reroute": reroute_info,
-		"raw_roadrisk_response": data,
-	}
+    # Ensure the index is within the expected range of 1 to num_bins
+    return max(1, min(index + 1, num_bins))  # Adding 1 because index is 0-based
