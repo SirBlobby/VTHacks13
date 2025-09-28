@@ -177,3 +177,81 @@ export const calculateRouteDensity = (
   
   return totalCrashes / Math.max(1, routeLength);
 };
+
+/**
+ * Calculate crash density for each segment of a route (for gradient visualization)
+ */
+export const calculateRouteSegmentDensities = (
+  routeCoordinates: [number, number][],
+  crashes: CrashData[],
+  bufferMeters = 100
+): number[] => {
+  const densities: number[] = [];
+  const routeLength = routeCoordinates.length;
+  
+  if (routeLength < 2) return [];
+  
+  for (let i = 0; i < routeLength - 1; i++) {
+    const segmentStart = routeCoordinates[i];
+    const segmentEnd = routeCoordinates[i + 1];
+    
+    // Count crashes near this segment
+    const segmentCrashes = crashes.filter(crash => {
+      const crashPoint: [number, number] = [crash.longitude, crash.latitude];
+      const distanceToSegment = Math.min(
+        haversine(crashPoint, segmentStart),
+        haversine(crashPoint, segmentEnd)
+      );
+      return distanceToSegment <= bufferMeters;
+    });
+    
+    densities.push(segmentCrashes.length);
+  }
+  
+  return densities;
+};
+
+/**
+ * Create Mapbox gradient stops from route segment densities
+ */
+export const createRouteGradientStops = (segmentDensities: number[]): any => {
+  if (segmentDensities.length === 0) {
+    return [
+      'interpolate',
+      ['linear'],
+      ['line-progress'],
+      0, '#00ff00',
+      1, '#00ff00'
+    ]; // Default green if no data
+  }
+  
+  const maxDensity = Math.max(...segmentDensities, 1); // Ensure at least 1 to avoid division by zero
+  const expression: any[] = ['interpolate', ['linear'], ['line-progress']];
+  
+  segmentDensities.forEach((density, index) => {
+    const position = index / Math.max(1, segmentDensities.length - 1); // Position along route (0 to 1)
+    
+    // Color based on density relative to max density
+    const intensity = density / maxDensity;
+    let color: string;
+    
+    if (intensity > 0.7) {
+      color = '#ff0000'; // High density: red
+    } else if (intensity > 0.4) {
+      color = '#ff6600'; // Medium density: orange
+    } else if (intensity > 0.2) {
+      color = '#ffff00'; // Low-medium density: yellow
+    } else {
+      color = '#00ff00'; // Low density: green
+    }
+    
+    expression.push(position, color);
+  });
+  
+  // Ensure we have at least start and end
+  if (segmentDensities.length === 1) {
+    expression.push(1, expression[expression.length - 1]); // Duplicate last color for end
+  }
+  
+  return expression;
+};

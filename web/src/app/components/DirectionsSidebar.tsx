@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import GeocodeInput from './GeocodeInput';
 import { useCrashData } from '../hooks/useCrashData';
-import { calculateRouteDensity } from '../../lib/mapUtils';
+import { calculateRouteDensity, calculateRouteSegmentDensities, createRouteGradientStops } from '../../lib/mapUtils';
 import { fetchSafeRoute, type SafeRouteData } from '../../lib/flaskApi';
 
 interface Props {
@@ -315,14 +315,12 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
       // Apply crash density gradient to all routes if crash data is available and gradient routes enabled
       if (gradientRoutes && crashDataHook.data.length > 0) {
         const routeCoordinates = (route.geometry as any).coordinates as [number, number][];
-        const crashDensity = calculateRouteDensity(routeCoordinates, crashDataHook.data, 150);
-        // For now, create a simple gradient based on the density value
-        const gradientStops = [
-          [0, crashDensity > 2 ? '#ff0000' : crashDensity > 1 ? '#ff6600' : '#00ff00'],
-          [1, crashDensity > 2 ? '#8b0000' : crashDensity > 1 ? '#ff4500' : '#006400']
-        ];
+        const segmentDensities = calculateRouteSegmentDensities(routeCoordinates, crashDataHook.data, 150);
+        const gradientExpression = createRouteGradientStops(segmentDensities);
         
-        map.setPaintProperty(layerId, 'line-gradient', gradientStops as [string, ...any[]]);
+        console.log('🎨 Applying gradient to route:', layerId, 'segments:', segmentDensities.length, 'expression:', gradientExpression);
+        
+        map.setPaintProperty(layerId, 'line-gradient', gradientExpression);
         map.setPaintProperty(layerId, 'line-color', undefined); // Remove solid color when using gradient
         map.setPaintProperty(layerId, 'line-width', isSelected ? routeWidths[0] : routeWidths[1]);
         map.setPaintProperty(layerId, 'line-opacity', isSelected ? routeOpacities[0] : routeOpacities[1]);
@@ -435,7 +433,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
         
         // Add alternate route source and layer
         if (!map.getSource("alternate-route")) {
-          map.addSource("alternate-route", { type: "geojson", data: alternateGeo });
+          map.addSource("alternate-route", { type: "geojson", data: alternateGeo, lineMetrics: true });
         } else {
           (map.getSource("alternate-route") as mapboxgl.GeoJSONSource).setData(alternateGeo);
         }
@@ -569,7 +567,7 @@ export default function DirectionsSidebar({ mapRef, profile = "mapbox/driving", 
 
         // Add safe route to map
         if (!map.getSource("safe-route")) {
-          map.addSource("safe-route", { type: "geojson", data: safeRouteGeo });
+          map.addSource("safe-route", { type: "geojson", data: safeRouteGeo, lineMetrics: true });
         } else {
           (map.getSource("safe-route") as mapboxgl.GeoJSONSource).setData(safeRouteGeo);
         }
