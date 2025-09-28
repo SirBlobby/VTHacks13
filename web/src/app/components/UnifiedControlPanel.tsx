@@ -88,9 +88,14 @@ export default function UnifiedControlPanel({
 	// Check AI API status when AI magnitudes are enabled
 	useEffect(() => {
 		if (useAIMagnitudes) {
-			const checkApiStatus = () => {
-				const status = getCircuitBreakerStatus();
-				setAiApiStatus(status);
+			const checkApiStatus = async () => {
+				try {
+					const status = await getCircuitBreakerStatus();
+					setAiApiStatus(status);
+				} catch (error) {
+					console.error('Error checking API status:', error);
+					setAiApiStatus({ isOpen: true, failures: 1 });
+				}
 			};
 			
 			// Check immediately

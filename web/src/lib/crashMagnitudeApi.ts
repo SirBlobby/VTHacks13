@@ -1,5 +1,5 @@
 /**
- * API service for crash magnitude prediction using AI model from ai.sirblob.co
+ * API service for crash magnitude prediction using roadcast model
  */
 
 export interface CrashMagnitudePrediction {
@@ -28,7 +28,8 @@ export interface CrashMagnitudeResponse {
 }
 
 /**
- * Get crash magnitude prediction from AI model
+ * Get crash magnitude prediction from roadcast API
+ * Simplified version that always tries to get the prediction
  */
 export async function getCrashMagnitudePrediction(
   sourceLat: number,
@@ -36,11 +37,6 @@ export async function getCrashMagnitudePrediction(
   destLat: number,
   destLon: number
 ): Promise<CrashMagnitudePrediction | null> {
-  // Check circuit breaker first
-  if (isCircuitBreakerOpen()) {
-    console.log('⏸️ AI API circuit breaker is open, skipping API call');
-    return null;
-  }
 
   try {
     const requestBody: CrashMagnitudeRequest = {
@@ -54,7 +50,7 @@ export async function getCrashMagnitudePrediction(
       }
     };
 
-    console.log('🔮 Requesting crash magnitude prediction:', requestBody);
+    console.log('� Requesting crash magnitude from roadcast API:', requestBody);
 
     // Create fetch options with timeout
     const fetchOptions: RequestInit = {
@@ -76,38 +72,36 @@ export async function getCrashMagnitudePrediction(
       console.log('⚠️ AbortSignal.timeout not supported, continuing without timeout');
     }
 
-    const response = await fetch('http://localhost:5001/predict', fetchOptions);
+    const response = await fetch('http://localhost:5000/predict', fetchOptions);
 
     if (!response.ok) {
-      console.error('❌ Crash magnitude API error:', response.status, response.statusText);
-      recordCircuitBreakerFailure();
+      console.error('❌ Roadcast API error:', response.status, response.statusText);
       return null;
     }
 
     const data: CrashMagnitudeResponse = await response.json();
-    console.log('✅ Crash magnitude prediction received:', data);
+    console.log('✅ Roadcast magnitude prediction received:', data);
     
-    // Record successful call
-    recordCircuitBreakerSuccess();
-
-    // Handle different response formats from the API
-    if (data.prediction && typeof data.prediction === 'object' && data.prediction.prediction !== undefined) {
-      // Response format: { prediction: { prediction: number } }
+    // Handle roadcast API response format
+    // The roadcast API returns the magnitude in the 'index' field
+    if (data.index !== undefined) {
+      console.log('🎯 Using roadcast index as crash magnitude:', data.index);
+      return { 
+        prediction: data.index, 
+        confidence: 0.95 // High confidence for roadcast model
+      };
+    } else if (data.prediction && typeof data.prediction === 'object' && data.prediction.prediction !== undefined) {
+      // Fallback: Response format: { prediction: { prediction: number } }
       return data.prediction;
     } else if (typeof data.prediction === 'number') {
-      // Response format: { prediction: number }
+      // Fallback: Response format: { prediction: number }
       return { prediction: data.prediction };
-    } else if (data.index !== undefined) {
-      // If prediction is empty but we have an index, use index as fallback prediction
-      console.log('🔄 Using index as fallback prediction:', data.index);
-      return { prediction: data.index, confidence: 0.5 }; // Lower confidence for fallback
     }
 
-    console.warn('⚠️ Unexpected response format from crash magnitude API:', data);
+    console.warn('⚠️ No usable magnitude data in roadcast API response:', data);
     return null;
 
   } catch (error) {
-    recordCircuitBreakerFailure();
     
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
@@ -164,41 +158,20 @@ const magnitudeCache = new Map<string, { prediction: CrashMagnitudePrediction; t
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Circuit breaker to avoid repeated failed API calls
+ * Status tracking for roadcast API (simplified - always available)
  */
-let circuitBreakerFailures = 0;
-let circuitBreakerLastFailTime = 0;
-const CIRCUIT_BREAKER_THRESHOLD = 3;
-const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
-const CIRCUIT_BREAKER_RESET_TIME = 300000; // 5 minutes
 
 function isCircuitBreakerOpen(): boolean {
-  const now = Date.now();
-  
-  // Reset circuit breaker after reset time
-  if (now - circuitBreakerLastFailTime > CIRCUIT_BREAKER_RESET_TIME) {
-    circuitBreakerFailures = 0;
-    return false;
-  }
-  
-  // Circuit is open if we have too many failures
-  return circuitBreakerFailures >= CIRCUIT_BREAKER_THRESHOLD;
+  // Roadcast API is local and reliable, always return false
+  return false;
 }
 
 function recordCircuitBreakerFailure(): void {
-  circuitBreakerFailures++;
-  circuitBreakerLastFailTime = Date.now();
-  
-  if (circuitBreakerFailures === CIRCUIT_BREAKER_THRESHOLD) {
-    console.warn(`🔌 AI API circuit breaker opened after ${CIRCUIT_BREAKER_THRESHOLD} failures. Will retry in ${CIRCUIT_BREAKER_RESET_TIME / 1000}s`);
-  }
+  // Not needed for local roadcast API, but kept for compatibility
 }
 
 function recordCircuitBreakerSuccess(): void {
-  if (circuitBreakerFailures > 0) {
-    console.log('✅ AI API circuit breaker reset after successful request');
-    circuitBreakerFailures = 0;
-  }
+  // Not needed for local roadcast API, but kept for compatibility
 }
 
 function getCacheKey(lat: number, lon: number): string {
@@ -233,13 +206,50 @@ export async function getCachedCrashMagnitude(
 }
 
 /**
- * Get current status of the AI API circuit breaker
+ * Get current status of the roadcast API by testing connection
  */
-export function getCircuitBreakerStatus(): { isOpen: boolean; failures: number; resetTime?: number } {
-  const isOpen = isCircuitBreakerOpen();
-  return {
-    isOpen,
-    failures: circuitBreakerFailures,
-    resetTime: isOpen ? circuitBreakerLastFailTime + CIRCUIT_BREAKER_RESET_TIME : undefined
-  };
+export async function getCircuitBreakerStatus(): Promise<{ isOpen: boolean; failures: number; resetTime?: number }> {
+  try {
+    // Test the roadcast API with a simple request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    
+    const response = await fetch('http://localhost:5000/predict', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source: { lat: 38.9, lon: -77.0 },
+        destination: { lat: 38.91, lon: -77.01 }
+      }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('🟢 Roadcast API status check successful:', data.index);
+      return {
+        isOpen: false,  // API is available
+        failures: 0,
+        resetTime: undefined
+      };
+    } else {
+      console.log('🔴 Roadcast API status check failed:', response.status);
+      return {
+        isOpen: true,   // API returned error
+        failures: 1,
+        resetTime: undefined
+      };
+    }
+  } catch (error) {
+    console.log('🔌 Roadcast API unavailable:', error);
+    return {
+      isOpen: true,   // API is unavailable
+      failures: 1,
+      resetTime: undefined
+    };
+  }
 }

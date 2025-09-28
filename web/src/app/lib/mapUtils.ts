@@ -78,14 +78,24 @@ export const convertCrashDataToGeoJSONWithAI = async (crashes: CrashData[]): Pro
                 const prediction = await getCachedCrashMagnitude(crash.latitude, crash.longitude);
                 
                 if (prediction && typeof prediction.prediction === 'number') {
-                    // Use AI prediction, but ensure it's in a reasonable range (1-10)
-                    const aiMagnitude = Math.max(1, Math.min(10, Math.round(prediction.prediction)));
+                    // Scale the roadcast API prediction to a reasonable range for visualization
+                    // Roadcast returns values like 47, so we'll scale them to 1-10 range
+                    let scaledMagnitude = prediction.prediction;
+                    
+                    // If the value seems to be in the roadcast range (typically 0-100), scale it down
+                    if (prediction.prediction > 20) {
+                        scaledMagnitude = Math.max(1, Math.min(10, Math.round(prediction.prediction / 10)));
+                    } else {
+                        scaledMagnitude = Math.max(1, Math.min(10, Math.round(prediction.prediction)));
+                    }
+                    
+                    console.log(`🎯 Scaled magnitude from ${prediction.prediction} to ${scaledMagnitude}`);
                     
                     enhancedFeatures[featureIndex] = {
                         ...enhancedFeatures[featureIndex],
                         properties: {
                             ...enhancedFeatures[featureIndex].properties,
-                            mag: aiMagnitude,
+                            mag: scaledMagnitude,
                             aiPredicted: true
                         }
                     };
@@ -233,7 +243,13 @@ export const generateDCPointsWithAI = async (count = 500) => {
         let aiPredicted = false;
         
         if (prediction && typeof prediction.prediction === 'number') {
-            mag = Math.max(1, Math.min(10, Math.round(prediction.prediction)));
+            // Scale the roadcast API prediction to a reasonable range for visualization
+            if (prediction.prediction > 20) {
+                mag = Math.max(1, Math.min(10, Math.round(prediction.prediction / 10)));
+            } else {
+                mag = Math.max(1, Math.min(10, Math.round(prediction.prediction)));
+            }
+            console.log(`🎯 Synthetic point scaled magnitude from ${prediction.prediction} to ${mag}`);
             aiPredicted = true;
         } else {
             mag = Math.round(Math.max(1, Math.abs(randNormal()) * 6));

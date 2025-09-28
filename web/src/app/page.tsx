@@ -18,7 +18,7 @@ export default function Home() {
 	const [heatRadius, setHeatRadius] = useState(16);
 	const [heatIntensity, setHeatIntensity] = useState(1);
 	const [gradientRoutes, setGradientRoutes] = useState(true);
-	const [useAIMagnitudes, setUseAIMagnitudes] = useState(false); // Default to false to avoid API issues
+	const [useAIMagnitudes, setUseAIMagnitudes] = useState(true); // Default to true since roadcast API is reliable
 
 	const [popup, setPopup] = useState<PopupData>(null);
 	const [popupVisible, setPopupVisible] = useState(false);
