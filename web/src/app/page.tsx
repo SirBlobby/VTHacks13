@@ -60,6 +60,7 @@ export default function Home() {
 					pointsVisible={pointsVisible}
 					useRealCrashData={true}
 					crashData={crashDataHook.data}
+					crashDataHook={crashDataHook}
 					isMapPickingMode={isMapPickingMode}
 					onMapReady={(m) => { mapRef.current = m; }}
 					onPopupCreate={(p) => { setPopupVisible(false); setPopup(p); requestAnimationFrame(() => setPopupVisible(true)); }}
